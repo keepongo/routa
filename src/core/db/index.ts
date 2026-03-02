@@ -3,6 +3,7 @@
  *
  * Supports two database backends:
  * - **Postgres** (Neon Serverless): Used in Web/Vercel deployments
+ * - **Postgres** (standard postgres-js): Used in CI and local Postgres setups
  * - **SQLite** (better-sqlite3): Used in desktop deployments (Tauri/Electron)
  *
  * The driver is selected based on the platform bridge configuration.
@@ -10,11 +11,15 @@
  * In Next.js dev mode, the instance survives HMR via globalThis.
  *
  * For Postgres: Requires DATABASE_URL environment variable.
+ *   - Neon URLs (containing "neon.tech"): use @neondatabase/serverless
+ *   - Standard URLs (localhost, RDS, etc.): use postgres-js driver
  * For SQLite: Uses local file (default: routa.db in app data directory).
  */
 
 import { neon } from "@neondatabase/serverless";
-import { drizzle, NeonHttpDatabase } from "drizzle-orm/neon-http";
+import { drizzle as neonDrizzle, NeonHttpDatabase } from "drizzle-orm/neon-http";
+import { drizzle as pgDrizzle } from "drizzle-orm/postgres-js";
+import postgres from "postgres";
 import * as schema from "./schema";
 
 // ─── Type Exports ───────────────────────────────────────────────────────
@@ -66,6 +71,15 @@ export function getDatabaseDriver(): DatabaseDriver {
 
 const PG_GLOBAL_KEY = "__routa_db__";
 
+/**
+ * Returns true when the URL targets a Neon serverless endpoint.
+ * Neon requires @neondatabase/serverless (HTTP/WebSocket); standard Postgres
+ * needs the postgres-js driver (TCP).
+ */
+function isNeonUrl(url: string): boolean {
+  return url.includes("neon.tech") || url.includes(".neon.database");
+}
+
 export function getPostgresDatabase(): PostgresDatabase {
   const g = globalThis as Record<string, unknown>;
   if (!g[PG_GLOBAL_KEY]) {
@@ -76,12 +90,22 @@ export function getPostgresDatabase(): PostgresDatabase {
         "Set it in .env.local for local dev or in Vercel project settings for production."
       );
     }
-    // Debug: Log the DATABASE_URL (masking password for security)
+    // Debug: Log the DATABASE_URL to stderr (masking password for security)
     const maskedUrl = databaseUrl.replace(/:([^:@]+)@/, ':***@');
-    console.log(`[DB] Connecting to Postgres: ${maskedUrl}`);
+    console.error(`[DB] Connecting to Postgres: ${maskedUrl}`);
 
-    const sql = neon(databaseUrl);
-    g[PG_GLOBAL_KEY] = drizzle(sql, { schema });
+    if (isNeonUrl(databaseUrl)) {
+      // Neon serverless: uses HTTP transport — suitable for Vercel/edge deployments
+      console.error("[DB] Using Neon serverless driver (HTTP)");
+      const sql = neon(databaseUrl);
+      g[PG_GLOBAL_KEY] = neonDrizzle(sql, { schema });
+    } else {
+      // Standard Postgres (local, RDS, CI, Docker, etc.): uses TCP via postgres-js
+      console.error("[DB] Using standard postgres-js driver (TCP)");
+      const client = postgres(databaseUrl, { max: 10 });
+      // Cast: both NeonHttpDatabase and PostgresJsDatabase share the drizzle query API
+      g[PG_GLOBAL_KEY] = pgDrizzle(client, { schema }) as unknown as PostgresDatabase;
+    }
   }
   return g[PG_GLOBAL_KEY] as PostgresDatabase;
 }
