@@ -250,6 +250,26 @@ export class BackgroundTaskWorker {
     } catch {
       // DB not ready — skip
     }
+
+    // Strategy 4: Detect stale RUNNING tasks whose sessions have been alive too long
+    // Sessions can stay in memory indefinitely; tasks running > 2 hours are considered stale
+    try {
+      const staleThreshold = new Date(Date.now() - 2 * 60 * 60 * 1000); // 2 hours
+      const runningTasks = await system.backgroundTaskStore.listRunning();
+      for (const task of runningTasks) {
+        if (!task.resultSessionId) continue;
+        if (!task.startedAt || task.startedAt > staleThreshold) continue;
+        // Task has been RUNNING for > 2 hours — mark as FAILED (session is effectively dead)
+        await system.backgroundTaskStore.updateStatus(task.id, "FAILED", {
+          completedAt: new Date(),
+          errorMessage: `Stale task: been running > 2 hours (session: ${task.resultSessionId})`,
+        });
+        this.sessionToTask.delete(task.resultSessionId);
+        console.log(`[BGWorker] Task ${task.id} marked FAILED (stale, running > 2h).`);
+      }
+    } catch {
+      // skip
+    }
   }
 }
 

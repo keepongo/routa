@@ -282,8 +282,16 @@ export function WorkspacePageClient() {
     }
   };
 
+  // PENDING tasks: hard delete (they haven't started running)
+  // RUNNING tasks: soft cancel → CANCELLED status
   const handleCancelTask = async (taskId: string) => {
     await fetch(`/api/background-tasks/${taskId}`, { method: "DELETE" });
+    setRefreshKey((k) => k + 1);
+  };
+
+  // Force-fail a stale RUNNING task (session is dead but still marked RUNNING)
+  const handleForceFailTask = async (taskId: string) => {
+    await fetch(`/api/background-tasks/${taskId}?force=true`, { method: "DELETE" });
     setRefreshKey((k) => k + 1);
   };
 
@@ -303,17 +311,12 @@ export function WorkspacePageClient() {
           body: JSON.stringify({ action: "deleteByStatus", status, workspaceId }),
         })
       );
-      // Also clear stale PENDING tasks from the polling adapter (common source of backlog)
+      // Clear ALL PENDING tasks (polling backlog, stale scheduled/workflow/webhook queues)
       requests.push(
         fetch("/api/background-tasks", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            action: "deleteByStatus",
-            status: "PENDING",
-            triggerSource: "polling",
-            workspaceId,
-          }),
+          body: JSON.stringify({ action: "deleteByStatus", status: "PENDING", workspaceId }),
         })
       );
       await Promise.all(requests);
@@ -687,25 +690,24 @@ export function WorkspacePageClient() {
                       <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
                     </svg>
                   </button>
-                  {/* Clear history — visible when there are terminal-state tasks OR stale PENDING polling tasks */}
+                  {/* Clear history — clears terminal-state tasks + ALL pending tasks */}
                   {(() => {
-                    const clearableCount =
-                      bgTasks.filter((t) =>
-                        ["COMPLETED", "CANCELLED", "FAILED"].includes(t.status) ||
-                        (t.status === "PENDING" && t.triggerSource === "polling")
-                      ).length;
+                    const clearableCount = bgTasks.filter((t) =>
+                      ["COMPLETED", "CANCELLED", "FAILED", "PENDING"].includes(t.status)
+                    ).length;
                     if (clearableCount === 0) return null;
+                    const hasPending = bgTasks.some((t) => t.status === "PENDING");
                     return (
                       <button
                         onClick={handleClearHistory}
                         disabled={clearingHistory}
-                        title={`Clear ${clearableCount} finished/polling tasks (COMPLETED, CANCELLED, FAILED and stale PENDING polling)`}
+                        title={`Clear ${clearableCount} tasks: all PENDING + COMPLETED/CANCELLED/FAILED`}
                         className="flex items-center gap-1 px-2 py-1.5 rounded-md text-[11px] font-medium text-gray-500 dark:text-gray-400 hover:bg-red-50 dark:hover:bg-red-900/20 hover:text-red-600 dark:hover:text-red-400 transition-colors disabled:opacity-50"
                       >
                         <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                           <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
                         </svg>
-                        {clearingHistory ? "Clearing…" : `Clear History (${clearableCount})`}
+                        {clearingHistory ? "Clearing…" : `Clear${hasPending ? " All" : " History"} (${clearableCount})`}
                       </button>
                     );
                   })()}
@@ -904,6 +906,19 @@ export function WorkspacePageClient() {
                                 {task.errorMessage && (
                                   <div className="text-red-500 dark:text-red-400 bg-red-50 dark:bg-red-900/20 px-2 py-1 rounded text-[11px]">
                                     <span className="font-semibold">Error:</span> {task.errorMessage}
+                                  </div>
+                                )}
+                                {/* Force Fail — for RUNNING tasks stuck > 30 min (session likely dead) */}
+                                {task.status === "RUNNING" && task.startedAt &&
+                                  Date.now() - new Date(task.startedAt).getTime() > 30 * 60 * 1000 && (
+                                  <div className="pt-1">
+                                    <button
+                                      onClick={() => handleForceFailTask(task.id)}
+                                      className="text-[10px] font-medium px-2 py-1 rounded bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 hover:bg-red-200 dark:hover:bg-red-800/40 transition-colors"
+                                      title="Force-fail this task — use when the session is gone but the task is still marked RUNNING"
+                                    >
+                                      ⚠ Force Fail (stale)
+                                    </button>
                                   </div>
                                 )}
                               </div>

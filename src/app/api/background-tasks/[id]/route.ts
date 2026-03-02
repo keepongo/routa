@@ -60,17 +60,35 @@ export async function PATCH(
 }
 
 export async function DELETE(
-  _request: NextRequest,
+  request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
+  const { searchParams } = request.nextUrl;
+  const force = searchParams.get("force") === "true";
+
   const system = getRoutaSystem();
   const task = await system.backgroundTaskStore.get(id);
   if (!task) {
     return NextResponse.json({ error: "Task not found" }, { status: 404 });
   }
 
-  if (task.status === "PENDING" || task.status === "RUNNING") {
+  // PENDING tasks have not started — hard delete immediately
+  if (task.status === "PENDING") {
+    await system.backgroundTaskStore.delete(id);
+    return NextResponse.json({ success: true });
+  }
+
+  // RUNNING tasks: soft-cancel unless force=true (for stale/orphaned tasks)
+  if (task.status === "RUNNING") {
+    if (force) {
+      await system.backgroundTaskStore.updateStatus(id, "FAILED", {
+        completedAt: new Date(),
+        errorMessage: "Force-deleted by user",
+      });
+      await system.backgroundTaskStore.delete(id);
+      return NextResponse.json({ success: true });
+    }
     await system.backgroundTaskStore.updateStatus(id, "CANCELLED", {
       completedAt: new Date(),
     });
@@ -78,6 +96,7 @@ export async function DELETE(
     return NextResponse.json({ task: updated });
   }
 
+  // Terminal state tasks (COMPLETED, CANCELLED, FAILED) — hard delete
   await system.backgroundTaskStore.delete(id);
   return NextResponse.json({ success: true });
 }
