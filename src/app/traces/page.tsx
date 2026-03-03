@@ -12,7 +12,7 @@
  * - Trace(AG-UI) (AG-UI protocol events)
  */
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, Suspense } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { TracePanel } from "@/client/components/trace-panel";
 import { EventBridgeTracePanel } from "@/client/components/event-bridge-trace-panel";
@@ -30,7 +30,7 @@ interface Session {
   lastTimestamp: string;
 }
 
-export default function TracePage() {
+function TracePageContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const [sessions, setSessions] = useState<Session[]>([]);
@@ -355,5 +355,21 @@ export default function TracePage() {
         </main>
       </div>
     </div>
+  );
+}
+
+// Default export with Suspense boundary for useSearchParams()
+export default function TracePage() {
+  return (
+    <Suspense fallback={
+      <div className="h-screen flex items-center justify-center bg-gray-50 dark:bg-[#0f1117]">
+        <div className="text-center">
+          <div className="animate-spin w-8 h-8 border-2 border-blue-500 border-t-transparent rounded-full mx-auto mb-4" />
+          <p className="text-sm text-gray-500 dark:text-gray-400">Loading...</p>
+        </div>
+      </div>
+    }>
+      <TracePageContent />
+    </Suspense>
   );
 }

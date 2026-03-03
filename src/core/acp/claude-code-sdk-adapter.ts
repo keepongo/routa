@@ -503,11 +503,13 @@ export class ClaudeCodeSdkAdapter {
 
         if (msg.type === "result") {
           // Log full result for debugging (visible in Vercel function logs)
+          const resultLength = ("result" in msg && msg.result) ? msg.result.length : 0;
+          const usage = msg.usage as unknown as Record<string, number> | null;
           console.log(
             `[ClaudeCodeSdkAdapter] result: subtype=${msg.subtype} is_error=${msg.is_error}` +
-            ` stop_reason=${msg.stop_reason} result_len=${msg.result?.length ?? 0}` +
-            ` in=${(msg.usage as Record<string,number>|null)?.input_tokens ?? 0}` +
-            ` out=${(msg.usage as Record<string,number>|null)?.output_tokens ?? 0}`
+            ` stop_reason=${msg.stop_reason} result_len=${resultLength}` +
+            ` in=${usage?.input_tokens ?? 0}` +
+            ` out=${usage?.output_tokens ?? 0}`
           );
           stopReason = msg.stop_reason ?? (msg.is_error ? "error" : "end_turn");
           if (msg.subtype === "success" && msg.result) {
@@ -599,13 +601,13 @@ export class ClaudeCodeSdkAdapter {
               },
             });
           } else if (event.delta.type === "input_json_delta") {
-            const inputDelta = (event.delta as Record<string, unknown>).partial_json;
+            const inputDelta = (event.delta as unknown as Record<string, unknown>).partial_json;
             if (inputDelta) {
               return createNotification("session/update", {
                 sessionId,
                 update: {
                   sessionUpdate: "tool_call_update",
-                  toolCallId: (event as Record<string, unknown>).index?.toString() ?? "unknown",
+                  toolCallId: (event as unknown as Record<string, unknown>).index?.toString() ?? "unknown",
                   inputDelta: inputDelta,
                   status: "running",
                 },
@@ -616,7 +618,7 @@ export class ClaudeCodeSdkAdapter {
           event.type === "content_block_start" &&
           event.content_block.type === "tool_use"
         ) {
-          const toolBlock = event.content_block as Record<string, unknown>;
+          const toolBlock = event.content_block as unknown as Record<string, unknown>;
           const rawInputObj = toolBlock.input ? { rawInput: toolBlock.input } : {};
           return createNotification("session/update", {
             sessionId,
@@ -651,7 +653,7 @@ export class ClaudeCodeSdkAdapter {
         // Also emit tool_call_update for completed tools
         for (const block of msg.message.content) {
           if (block.type === "tool_use") {
-            const toolBlock = block as Record<string, unknown>;
+            const toolBlock = block as unknown as Record<string, unknown>;
             const rawInputObj = toolBlock.input ? { rawInput: toolBlock.input } : {};
             return createNotification("session/update", {
               sessionId,
@@ -725,7 +727,7 @@ export class ClaudeCodeSdkAdapter {
 
     for (const block of msg.message.content) {
       if (block.type !== "tool_use") continue;
-      const toolBlock = block as Record<string, unknown>;
+      const toolBlock = block as unknown as Record<string, unknown>;
       const input = (toolBlock.input ?? {}) as Record<string, unknown>;
 
       // Case 1: Direct set_agent_name tool call (may appear even if the SDK
