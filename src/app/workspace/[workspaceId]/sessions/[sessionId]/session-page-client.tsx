@@ -230,6 +230,13 @@ export function SessionPageClient() {
   const [activeCrafterId, setActiveCrafterId] = useState<string | null>(null);
   const [concurrency, setConcurrency] = useState(1);
 
+  // Queue for sequential task execution (concurrency=1).
+  // Holds the pending note IDs / task IDs that haven't been dispatched yet.
+  const noteTaskQueueRef = useRef<string[]>([]);
+  const routaTaskQueueRef = useRef<string[]>([]);
+  // Track how many agents are currently running (dispatched but not completed).
+  const runningCrafterCountRef = useRef(0);
+
   // ── Tool mode state ──────────────────────────────────────────────────
   const [toolMode, setToolMode] = useState<"essential" | "full">("essential");
 
@@ -1043,15 +1050,14 @@ export function SessionPageClient() {
     const effectiveConcurrency = Math.min(requestedConcurrency, confirmedTasks.length);
 
     if (effectiveConcurrency <= 1) {
-      // Sequential execution - auto-switch to each agent's view
-      for (const task of confirmedTasks) {
-        const agent = await handleExecuteTask(task.id);
-        if (agent) {
-          setActiveCrafterId(agent.id);
-        }
-      }
+      // Sequential: dispatch only the first task; queue the rest.
+      // The completion-watching effect will pop and dispatch subsequent tasks.
+      routaTaskQueueRef.current = confirmedTasks.slice(1).map((t) => t.id);
+      const agent = await handleExecuteTask(confirmedTasks[0].id);
+      if (agent) setActiveCrafterId(agent.id);
     } else {
       // Parallel execution with concurrency limit
+      routaTaskQueueRef.current = [];
       const queue = [...confirmedTasks];
       const runBatch = async () => {
         const batch = queue.splice(0, effectiveConcurrency);
@@ -1079,6 +1085,36 @@ export function SessionPageClient() {
   const handleConcurrencyChange = useCallback((n: number) => {
     setConcurrency(n);
   }, []);
+
+  // ── Auto-advance sequential queue when an agent completes ────────────
+  // Forward-declared refs so the effect callbacks can read the latest handlers
+  // without causing circular dependency loops.
+  const handleExecuteNoteTaskRef = useRef<((noteId: string) => Promise<CrafterAgent | null>) | null>(null);
+  const handleExecuteTaskRef = useRef<((taskId: string) => Promise<CrafterAgent | null>) | null>(null);
+
+  useEffect(() => {
+    const prevRunning = runningCrafterCountRef.current;
+    const nowRunning = crafterAgents.filter((a) => a.status === "running").length;
+    runningCrafterCountRef.current = nowRunning;
+
+    // A crafter just finished (running count decreased) — advance the queue
+    if (nowRunning < prevRunning) {
+      const noteId = noteTaskQueueRef.current.shift();
+      if (noteId && handleExecuteNoteTaskRef.current) {
+        handleExecuteNoteTaskRef.current(noteId).then((agent) => {
+          if (agent) setActiveCrafterId(agent.id);
+        });
+        return;
+      }
+      const taskId = routaTaskQueueRef.current.shift();
+      if (taskId && handleExecuteTaskRef.current) {
+        handleExecuteTaskRef.current(taskId).then((agent) => {
+          if (agent) setActiveCrafterId(agent.id);
+        });
+      }
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [crafterAgents]);
 
   /**
    * Abort a running CRAFTER agent by sending session/cancel to the child session.
@@ -1171,15 +1207,10 @@ export function SessionPageClient() {
     const note = notesHook.notes.find((n) => n.id === noteId);
     if (!note) return null;
 
-    // Enforce concurrency limit: if concurrency=1 and another task is running, skip
-    if (concurrency <= 1) {
-      const runningTask = notesHook.notes.find(
-        (n) => n.id !== noteId && n.metadata.type === "task" && n.metadata.taskStatus === "IN_PROGRESS"
-      );
-      if (runningTask) {
-        console.warn(`[CollabEditor] Concurrency limit reached (${concurrency}). Task "${runningTask.title}" is still running.`);
-        return null;
-      }
+    // Enforce concurrency limit: check active crafter count (note metadata may be stale)
+    if (concurrency <= 1 && runningCrafterCountRef.current > 0) {
+      console.warn(`[CollabEditor] Concurrency limit reached (${concurrency}). ${runningCrafterCountRef.current} task(s) still running.`);
+      return null;
     }
 
     // Mark note as in-progress
@@ -1296,11 +1327,13 @@ export function SessionPageClient() {
     const effectiveConcurrency = Math.min(requestedConcurrency, pendingNotes.length);
 
     if (effectiveConcurrency <= 1) {
-      for (const note of pendingNotes) {
-        const agent = await handleExecuteNoteTask(note.id);
-        if (agent) setActiveCrafterId(agent.id);
-      }
+      // Sequential: dispatch only the first task; queue the rest.
+      // The completion-watching effect will pop and dispatch subsequent tasks.
+      noteTaskQueueRef.current = pendingNotes.slice(1).map((n) => n.id);
+      const agent = await handleExecuteNoteTask(pendingNotes[0].id);
+      if (agent) setActiveCrafterId(agent.id);
     } else {
+      noteTaskQueueRef.current = [];
       const queue = [...pendingNotes];
       while (queue.length > 0) {
         const batch = queue.splice(0, effectiveConcurrency);
@@ -1314,6 +1347,10 @@ export function SessionPageClient() {
       }
     }
   }, [notesHook, handleExecuteNoteTask]);
+
+  // Keep refs up to date so the queue-advance effect always calls the latest version
+  useEffect(() => { handleExecuteNoteTaskRef.current = handleExecuteNoteTask; }, [handleExecuteNoteTask]);
+  useEffect(() => { handleExecuteTaskRef.current = handleExecuteTask; }, [handleExecuteTask]);
 
   // Notes are now pre-filtered by useNotes(workspaceId, sessionId)
   // - Task notes: only those with matching sessionId

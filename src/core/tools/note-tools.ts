@@ -277,9 +277,24 @@ export class NoteTools {
     // Use provided sessionId, or inherit from parent note
     const effectiveSessionId = params.sessionId ?? note.sessionId;
 
+    // Fetch existing task notes in this session to deduplicate by title
+    const existingNotes = await this.noteStore.listByType(params.workspaceId, "task");
+    const existingTaskTitles = new Set(
+      existingNotes
+        .filter((n) => n.sessionId === effectiveSessionId && n.metadata.parentNoteId === params.noteId)
+        .map((n) => n.title)
+    );
+
     const createdTasks: Array<{ taskId: string; noteId: string; title: string }> = [];
+    let skippedCount = 0;
 
     for (const parsedTask of parseResult.tasks) {
+      // Skip if a task with the same title already exists in this session
+      if (existingTaskTitles.has(parsedTask.title)) {
+        skippedCount++;
+        continue;
+      }
+
       // Create Task record in TaskStore
       const taskId = uuidv4();
       const task = createTaskModel({
@@ -345,6 +360,7 @@ export class NoteTools {
 
     return successResult({
       blocksConverted: createdTasks.length,
+      skippedDuplicates: skippedCount,
       invalidBlocks: parseResult.invalidBlockCount,
       tasks: createdTasks,
     });
