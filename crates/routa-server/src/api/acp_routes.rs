@@ -201,14 +201,19 @@ async fn acp_rpc(
                 .get("model")
                 .and_then(|v| v.as_str())
                 .map(|s| s.to_string());
+            let parent_session_id = params
+                .get("parentSessionId")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string());
 
             let session_id = uuid::Uuid::new_v4().to_string();
 
             tracing::info!(
-                "[ACP Route] Creating session: provider={:?}, cwd={}, role={:?}",
+                "[ACP Route] Creating session: provider={:?}, cwd={}, role={:?}, parent={:?}",
                 provider,
                 cwd,
-                role
+                role,
+                parent_session_id
             );
 
             // Spawn agent process, initialize protocol, create agent session
@@ -221,6 +226,7 @@ async fn acp_rpc(
                     provider.clone(),
                     role.clone(),
                     model.clone(),
+                    parent_session_id,
                 )
                 .await
             {
@@ -319,6 +325,7 @@ async fn acp_rpc(
                         provider.clone(),
                         role,
                         None, // model
+                        None, // parent_session_id
                     )
                     .await
                 {

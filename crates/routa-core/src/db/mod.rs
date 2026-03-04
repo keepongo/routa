@@ -262,10 +262,13 @@ impl Database {
             let _ = conn.execute("ALTER TABLE tasks ADD COLUMN session_id TEXT", []);
             // Add session_id to notes if it doesn't exist yet (ignore error if already present)
             let _ = conn.execute("ALTER TABLE notes ADD COLUMN session_id TEXT", []);
+            // Add parent_session_id to acp_sessions for CRAFTER child session tracking
+            let _ = conn.execute("ALTER TABLE acp_sessions ADD COLUMN parent_session_id TEXT", []);
             // Create indexes for session_id columns
             conn.execute_batch(
                 "CREATE INDEX IF NOT EXISTS idx_tasks_session ON tasks(session_id);
-                 CREATE INDEX IF NOT EXISTS idx_notes_session ON notes(session_id);"
+                 CREATE INDEX IF NOT EXISTS idx_notes_session ON notes(session_id);
+                 CREATE INDEX IF NOT EXISTS idx_acp_sessions_parent ON acp_sessions(parent_session_id);"
             )
         })
     }

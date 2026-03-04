@@ -35,6 +35,7 @@ pub struct AcpSessionRow {
     pub message_history: Vec<serde_json::Value>,
     pub created_at: i64,
     pub updated_at: i64,
+    pub parent_session_id: Option<String>,
 }
 
 pub struct AcpSessionStore {
@@ -53,7 +54,7 @@ impl AcpSessionStore {
             .with_conn_async(move |conn| {
                 let mut stmt = conn.prepare(
                     "SELECT id, name, cwd, workspace_id, routa_agent_id, provider, role, mode_id,
-                            first_prompt_sent, message_history, created_at, updated_at
+                            first_prompt_sent, message_history, created_at, updated_at, parent_session_id
                      FROM acp_sessions WHERE id = ?1",
                 )?;
 
@@ -76,6 +77,7 @@ impl AcpSessionStore {
                             message_history: history,
                             created_at: row.get(10)?,
                             updated_at: row.get(11)?,
+                            parent_session_id: row.get(12)?,
                         })
                     })
                     .optional()?;
@@ -124,13 +126,13 @@ impl AcpSessionStore {
                 let (sql, params): (&str, Vec<Box<dyn rusqlite::ToSql>>) = match &workspace_filter {
                     Some(ws) => (
                         "SELECT id, name, cwd, workspace_id, routa_agent_id, provider, role, mode_id,
-                                first_prompt_sent, message_history, created_at, updated_at
+                                first_prompt_sent, message_history, created_at, updated_at, parent_session_id
                          FROM acp_sessions WHERE workspace_id = ?1 ORDER BY updated_at DESC LIMIT ?2",
                         vec![Box::new(ws.clone()) as Box<dyn rusqlite::ToSql>, Box::new(limit as i64)],
                     ),
                     None => (
                         "SELECT id, name, cwd, workspace_id, routa_agent_id, provider, role, mode_id,
-                                first_prompt_sent, message_history, created_at, updated_at
+                                first_prompt_sent, message_history, created_at, updated_at, parent_session_id
                          FROM acp_sessions ORDER BY updated_at DESC LIMIT ?1",
                         vec![Box::new(limit as i64) as Box<dyn rusqlite::ToSql>],
                     ),
@@ -156,6 +158,7 @@ impl AcpSessionStore {
                         message_history: history,
                         created_at: row.get(10)?,
                         updated_at: row.get(11)?,
+                        parent_session_id: row.get(12)?,
                     })
                 })?;
 

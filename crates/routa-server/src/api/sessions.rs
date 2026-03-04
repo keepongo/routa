@@ -19,6 +19,7 @@ pub fn router() -> Router<AppState> {
 #[serde(rename_all = "camelCase")]
 struct ListSessionsQuery {
     workspace_id: Option<String>,
+    parent_session_id: Option<String>,
     limit: Option<usize>,
 }
 
@@ -42,12 +43,20 @@ async fn list_sessions(
         .into_iter()
         .filter(|s| {
             // Filter by workspace if specified
-            query
-                .workspace_id
-                .as_ref()
-                .map_or(true, |ws| &s.workspace_id == ws)
+            if let Some(ref ws) = query.workspace_id {
+                if &s.workspace_id != ws {
+                    return false;
+                }
+            }
+            // Filter by parentSessionId if specified
+            if let Some(ref parent_id) = query.parent_session_id {
+                if s.parent_session_id.as_deref() != Some(parent_id.as_str()) {
+                    return false;
+                }
+            }
+            true
         })
-        .map(|s| serde_json::to_value(s).unwrap_or_default())
+        .map(|s| serde_json::to_value(&s).unwrap_or_default())
         .collect();
 
     // Load sessions from database and merge
@@ -58,6 +67,12 @@ async fn list_sessions(
     {
         for db_session in db_sessions {
             if !in_memory_ids.contains(&db_session.id) {
+                // Apply parentSessionId filter for DB sessions too
+                if let Some(ref parent_id) = query.parent_session_id {
+                    if db_session.parent_session_id.as_deref() != Some(parent_id.as_str()) {
+                        continue;
+                    }
+                }
                 sessions.push(serde_json::json!({
                     "sessionId": db_session.id,
                     "name": db_session.name,
@@ -68,6 +83,7 @@ async fn list_sessions(
                     "role": db_session.role,
                     "modeId": db_session.mode_id,
                     "createdAt": db_session.created_at,
+                    "parentSessionId": db_session.parent_session_id,
                 }));
             }
         }

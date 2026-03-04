@@ -66,6 +66,9 @@ pub struct AcpSessionRecord {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub model: Option<String>,
     pub created_at: String,
+    /// Parent session ID for CRAFTER child sessions
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub parent_session_id: Option<String>,
 }
 
 // ─── Managed Process ────────────────────────────────────────────────────
@@ -185,11 +188,22 @@ impl AcpManager {
     }
 
     /// Add a notification to session history.
+    /// Child agent notifications (those with `childAgentId`) are NOT stored in the
+    /// parent session's history — they would flood out the ROUTA coordinator's own
+    /// messages. Child messages are persisted in their own child session's history.
     pub async fn push_to_history(&self, session_id: &str, notification: serde_json::Value) {
+        // Skip child agent notifications to prevent flooding parent history
+        if notification.get("childAgentId").is_some() {
+            return;
+        }
         let mut history = self.history.write().await;
-        history.entry(session_id.to_string())
-            .or_insert_with(Vec::new)
-            .push(notification);
+        let entries = history.entry(session_id.to_string()).or_insert_with(Vec::new);
+        entries.push(notification);
+        // Cap at 500 entries (same limit as Next.js backend)
+        if entries.len() > 500 {
+            let drain_count = entries.len() - 500;
+            entries.drain(0..drain_count);
+        }
     }
 
     /// Create a new ACP session: spawn agent process, initialize, create session.
@@ -205,6 +219,7 @@ impl AcpManager {
         provider: Option<String>,
         role: Option<String>,
         model: Option<String>,
+        parent_session_id: Option<String>,
     ) -> Result<(String, String), String> {
         let provider_name = provider.as_deref().unwrap_or("opencode");
 
@@ -280,6 +295,7 @@ impl AcpManager {
             mode_id: None,
             model: model.clone(),
             created_at: chrono::Utc::now().to_rfc3339(),
+            parent_session_id: parent_session_id.clone(),
         };
 
         self.sessions
