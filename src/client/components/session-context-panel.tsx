@@ -27,15 +27,6 @@ interface SessionContextPanelProps {
   sessionId: string;
   workspaceId: string;
   onSelectSession: (sessionId: string) => void;
-  notes?: Array<{
-    id: string;
-    title: string;
-    metadata: {
-      type: string;
-      taskStatus?: string;
-    };
-    sessionId?: string;
-  }>;
   refreshTrigger?: number;
 }
 
@@ -43,15 +34,12 @@ export function SessionContextPanel({
   sessionId,
   workspaceId: _workspaceId,
   onSelectSession,
-  notes = [],
   refreshTrigger = 0,
 }: SessionContextPanelProps) {
   const [context, setContext] = useState<SessionContext | null>(null);
   const [loading, setLoading] = useState(true);
   const [expandedSections, setExpandedSections] = useState({
     hierarchy: true,
-    tasks: true,
-    related: false,
   });
 
   const fetchContext = useCallback(async () => {
@@ -111,20 +99,6 @@ export function SessionContextPanel({
   };
 
   const hasHierarchy = context.parent || context.children.length > 0;
-  const hasRelated =
-    context.siblings.length > 0 || context.recentInWorkspace.length > 0;
-
-  // Filter tasks related to this session or its parent
-  const relatedTasks = notes.filter((note) => {
-    if (note.metadata.type !== "task") return false;
-    // Show tasks from current session or parent session
-    return (
-      note.sessionId === sessionId ||
-      (context.parent && note.sessionId === context.parent.sessionId)
-    );
-  });
-
-  const hasTasks = relatedTasks.length > 0;
 
   return (
     <div className="border-b border-gray-100 dark:border-gray-800">
@@ -306,235 +280,7 @@ export function SessionContextPanel({
         </div>
       )}
 
-      {/* Collaborative Tasks */}
-      {hasTasks && (
-        <div className="border-b border-gray-100 dark:border-gray-800">
-          <button
-            onClick={() =>
-              setExpandedSections((prev) => ({
-                ...prev,
-                tasks: !prev.tasks,
-              }))
-            }
-            className="w-full px-3 py-2 flex items-center justify-between hover:bg-gray-50 dark:hover:bg-gray-900/30 transition-colors"
-          >
-            <div className="flex items-center gap-1.5">
-              <svg
-                className="w-3.5 h-3.5 text-blue-500"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-                strokeWidth={2}
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"
-                />
-              </svg>
-              <span className="text-[11px] font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                Tasks
-              </span>
-              <span className="ml-1 px-1.5 py-0.5 text-[10px] bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 rounded-full">
-                {relatedTasks.length}
-              </span>
-            </div>
-            <svg
-              className={`w-3 h-3 text-gray-400 transition-transform ${
-                expandedSections.tasks ? "rotate-180" : ""
-              }`}
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-              strokeWidth={2}
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                d="M19 9l-7 7-7-7"
-              />
-            </svg>
-          </button>
 
-          {expandedSections.tasks && (
-            <div className="px-3 pb-2 space-y-1">
-              {relatedTasks.map((task) => {
-                const isCurrentSession = task.sessionId === sessionId;
-                const linkedChild = context?.children.find(
-                  (c) => c.sessionId === task.sessionId
-                );
-                return (
-                  <div
-                    key={task.id}
-                    className={`px-2 py-1.5 rounded-md ${
-                      isCurrentSession
-                        ? "bg-blue-50 dark:bg-blue-900/10"
-                        : "bg-gray-50 dark:bg-gray-800/50 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800"
-                    }`}
-                    onClick={
-                      !isCurrentSession && task.sessionId
-                        ? () => onSelectSession(task.sessionId!)
-                        : undefined
-                    }
-                  >
-                    <div className="flex items-start gap-1.5">
-                      <div className="min-w-0 flex-1">
-                        <div className="text-[11px] font-medium text-gray-700 dark:text-gray-300 truncate">
-                          {task.title}
-                        </div>
-                        <div className="mt-0.5 flex flex-wrap items-center gap-1">
-                          {task.metadata.taskStatus && (
-                            <span
-                              className={`text-[9px] px-1.5 py-0.5 rounded ${
-                                task.metadata.taskStatus === "COMPLETED"
-                                  ? "bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400"
-                                  : task.metadata.taskStatus === "IN_PROGRESS"
-                                  ? "bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-400"
-                                  : task.metadata.taskStatus === "FAILED"
-                                  ? "bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400"
-                                  : "bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400"
-                              }`}
-                            >
-                              {task.metadata.taskStatus}
-                            </span>
-                          )}
-                          {task.sessionId && (
-                            <span className="text-[9px] text-gray-400 dark:text-gray-500 font-mono">
-                              {linkedChild?.name
-                                ? linkedChild.name
-                                : isCurrentSession
-                                ? "this session"
-                                : task.sessionId.slice(0, 8)}
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Related Sessions */}
-      {hasRelated && (
-        <div>
-          <button
-            onClick={() =>
-              setExpandedSections((prev) => ({
-                ...prev,
-                related: !prev.related,
-              }))
-            }
-            className="w-full px-3 py-2 flex items-center justify-between hover:bg-gray-50 dark:hover:bg-gray-900/30 transition-colors"
-          >
-            <div className="flex items-center gap-1.5">
-              <svg
-                className="w-3.5 h-3.5 text-gray-400"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-                strokeWidth={2}
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"
-                />
-              </svg>
-              <span className="text-[11px] font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                Related
-              </span>
-              <span className="ml-1 px-1.5 py-0.5 text-[10px] bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400 rounded-full">
-                {context.siblings.length + context.recentInWorkspace.length}
-              </span>
-            </div>
-            <svg
-              className={`w-3 h-3 text-gray-400 transition-transform ${
-                expandedSections.related ? "rotate-180" : ""
-              }`}
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-              strokeWidth={2}
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                d="M19 9l-7 7-7-7"
-              />
-            </svg>
-          </button>
-
-          {expandedSections.related && (
-            <div className="px-3 pb-2 space-y-1">
-              {/* Sibling Sessions */}
-              {context.siblings.map((sibling) => (
-                <div
-                  key={sibling.sessionId}
-                  onClick={() => onSelectSession(sibling.sessionId)}
-                  className="flex items-start gap-2 px-2 py-1.5 rounded-md hover:bg-gray-100 dark:hover:bg-gray-800 cursor-pointer transition-colors"
-                >
-                  <svg
-                    className="w-3 h-3 text-purple-500 shrink-0 mt-0.5"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    stroke="currentColor"
-                    strokeWidth={2}
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      d="M13 10V3L4 14h7v7l9-11h-7z"
-                    />
-                  </svg>
-                  <div className="min-w-0 flex-1">
-                    <div className="text-[11px] font-medium text-gray-700 dark:text-gray-300 truncate">
-                      {sibling.name ?? getDefaultName(sibling)}
-                    </div>
-                    <div className="text-[10px] text-gray-400 dark:text-gray-500">
-                      Sibling • {sibling.role}
-                    </div>
-                  </div>
-                </div>
-              ))}
-
-              {/* Recent Sessions */}
-              {context.recentInWorkspace.map((recent) => (
-                <div
-                  key={recent.sessionId}
-                  onClick={() => onSelectSession(recent.sessionId)}
-                  className="flex items-start gap-2 px-2 py-1.5 rounded-md hover:bg-gray-100 dark:hover:bg-gray-800 cursor-pointer transition-colors"
-                >
-                  <svg
-                    className="w-3 h-3 text-gray-400 shrink-0 mt-0.5"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    stroke="currentColor"
-                    strokeWidth={2}
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"
-                    />
-                  </svg>
-                  <div className="min-w-0 flex-1">
-                    <div className="text-[11px] font-medium text-gray-700 dark:text-gray-300 truncate">
-                      {recent.name ?? getDefaultName(recent)}
-                    </div>
-                    <div className="text-[10px] text-gray-400 dark:text-gray-500">
-                      {recent.role} • {formatTimeAgo(recent.createdAt)}
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
     </div>
   );
 }

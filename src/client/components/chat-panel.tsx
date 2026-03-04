@@ -1671,6 +1671,10 @@ export function ChatPanel({
                   if (msg.role === "plan" && msg.planEntries && msg.planEntries.length > 0) {
                     return false;
                   }
+                  // Hide task-type tool messages (delegated tasks) - they show in the right panel CraftersView
+                  if (msg.role === "tool" && msg.toolKind === "task") {
+                    return false;
+                  }
                   return true;
                 })
                 .map((msg, index) => (

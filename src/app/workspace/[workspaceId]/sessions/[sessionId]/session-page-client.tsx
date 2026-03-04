@@ -170,7 +170,7 @@ export function SessionPageClient() {
   const [taskPanelMode, setTaskPanelMode] = useState<"tasks" | "collab">("tasks");
 
   // ── Resizable right sidebar state ────────────────────────────────────
-  const [sidebarWidth, setSidebarWidth] = useState(380);
+  const [sidebarWidth, setSidebarWidth] = useState(480);
   const [isResizing, setIsResizing] = useState(false);
   const resizeStartXRef = useRef(0);
   const resizeStartWidthRef = useRef(0);
@@ -1595,7 +1595,6 @@ export function SessionPageClient() {
               sessionId={sessionId}
               workspaceId={workspaceId}
               onSelectSession={handleSelectSession}
-              notes={sessionNotes}
               refreshTrigger={refreshKey}
             />
           </div>
