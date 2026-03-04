@@ -93,10 +93,11 @@ export class AcpProcessManager {
         }
 
         // Setup MCP: writes config files and/or returns CLI args
-        // Pass workspaceId so the MCP endpoint URL has the correct ?wsId= param
+        // Pass workspaceId and sessionId so the MCP endpoint URL has ?wsId= and ?sid= params
+        // This ensures notes created by the agent are scoped to the current session.
         let mcpConfigs: string[] | undefined;
         if (providerSupportsMcp(presetId)) {
-            const mcpResult = await ensureMcpForProvider(presetId, getDefaultRoutaMcpConfig(workspaceId));
+            const mcpResult = await ensureMcpForProvider(presetId, getDefaultRoutaMcpConfig(workspaceId, sessionId));
             mcpConfigs = mcpResult.mcpConfigs.length > 0 ? mcpResult.mcpConfigs : undefined;
             console.log(`[AcpProcessManager] MCP setup for ${presetId}: ${mcpResult.summary}`);
         }

@@ -304,7 +304,7 @@ export async function POST(request: NextRequest) {
         );
       } else if (isClaudeCode) {
         // ── Claude Code: stream-json protocol with MCP (CLI process) ───
-        const mcpConfigs = await buildMcpConfigForClaude(workspaceId);
+        const mcpConfigs = await buildMcpConfigForClaude(workspaceId, sessionId);
 
         acpSessionId = await manager.createClaudeSession(
           sessionId,
@@ -617,7 +617,7 @@ export async function POST(request: NextRequest) {
             );
           } else if (isClaudeCode) {
             // Claude Code CLI session
-            const mcpConfigs = await buildMcpConfigForClaude(workspaceId);
+            const mcpConfigs = await buildMcpConfigForClaude(workspaceId, sessionId);
             acpSessionId = await manager.createClaudeSession(
               sessionId,
               cwd,
@@ -1331,11 +1331,11 @@ function jsonrpcResponse(
  * Claude Code accepts --mcp-config with an inline JSON object.
  * We reuse the shared provider setup path to avoid config drift.
  */
-async function buildMcpConfigForClaude(workspaceId?: string): Promise<string[]> {
+async function buildMcpConfigForClaude(workspaceId?: string, sessionId?: string): Promise<string[]> {
   // Keep Claude MCP setup consistent with all other providers.
-  // Pass workspace ID so it's embedded in the MCP endpoint URL (?wsId=...)
-  // allowing the MCP server to bind the session to the correct workspace.
-  const config = workspaceId ? getDefaultRoutaMcpConfig(workspaceId) : undefined;
+  // Pass workspace ID and session ID so they're embedded in the MCP endpoint URL
+  // (?wsId=...&sid=...) allowing the MCP server to scope notes to the correct session.
+  const config = workspaceId ? getDefaultRoutaMcpConfig(workspaceId, sessionId) : undefined;
   const result = await ensureMcpForProvider("claude", config);
   console.log(`[ACP Route] MCP config for Claude Code: ${result.summary}`);
   return result.mcpConfigs;
