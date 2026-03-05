@@ -59,6 +59,7 @@ async fn execute_tool(
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[allow(dead_code)]
 struct UpdateToolsConfigRequest {
     enabled: Option<Vec<String>>,
     disabled: Option<Vec<String>>,

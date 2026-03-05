@@ -9,7 +9,7 @@
 
 use axum::{
     extract::Query,
-    routing::{get, post},
+    routing::get,
     Json, Router,
 };
 use serde::Deserialize;
@@ -23,6 +23,7 @@ pub fn router() -> Router<AppState> {
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[allow(dead_code)]
 struct DashboardQuery {
     workspace_id: Option<String>,
 }

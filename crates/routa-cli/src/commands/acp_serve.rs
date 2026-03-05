@@ -218,6 +218,7 @@ async fn handle_session_new(
             Some(provider.to_string()),
             Some(role.to_string()),
             None,
+            None, // branch
         )
         .await;
 

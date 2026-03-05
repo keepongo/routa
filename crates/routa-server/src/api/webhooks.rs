@@ -40,6 +40,7 @@ pub fn router() -> Router<AppState> {
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[allow(dead_code)]
 struct WebhookQuery {
     workspace_id: Option<String>,
     limit: Option<usize>,
