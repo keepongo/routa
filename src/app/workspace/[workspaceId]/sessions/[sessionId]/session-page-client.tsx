@@ -1621,7 +1621,6 @@ export function SessionPageClient() {
           onSelect={handleWorkspaceSelect}
           onCreate={handleWorkspaceCreate}
           loading={workspacesHook.loading}
-          compact
         />
 
         {/* Agent selector */}
@@ -1758,15 +1757,11 @@ export function SessionPageClient() {
           {/* Sidebar header with codebase + collapse */}
           <div className="px-3 py-2 border-b border-gray-100 dark:border-gray-800 flex items-center justify-between gap-2">
             <div className="flex items-center gap-1.5 min-w-0">
-              <svg className="w-3.5 h-3.5 text-indigo-500 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V7z" />
-              </svg>
-              <span className="text-xs font-medium text-gray-700 dark:text-gray-300 truncate">
-                {effectiveWorkspace.title}
-              </span>
               {codebases.length > 0 && repoSelection && (
                 <>
-                  <span className="text-gray-300 dark:text-gray-600">/</span>
+                  <svg className="w-3.5 h-3.5 text-indigo-500 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V7z" />
+                  </svg>
                   <span className="text-xs text-gray-500 dark:text-gray-400 truncate">
                     {repoSelection.name ?? repoSelection.path.split("/").pop()}
                   </span>
@@ -1845,14 +1840,10 @@ export function SessionPageClient() {
                     onUpdateNote={notesHook.updateNote}
                     onDeleteNote={notesHook.deleteNote}
                     workspaceId={workspaceId}
-                    crafterAgents={crafterAgents}
-                    activeCrafterId={activeCrafterId}
-                    onSelectCrafter={handleSelectCrafter}
                     onExecuteTask={handleExecuteNoteTask}
                     onExecuteAll={handleExecuteAllNoteTasks}
                     concurrency={concurrency}
                     onConcurrencyChange={handleConcurrencyChange}
-                    onUpdateAgentMessages={handleUpdateAgentMessages}
                   />
                 ) : (
                   <TaskPanel
@@ -1862,14 +1853,8 @@ export function SessionPageClient() {
                     onConfirmTask={handleConfirmTask}
                     onEditTask={handleEditTask}
                     onExecuteTask={handleExecuteTask}
-                    crafterAgents={crafterAgents}
-                    activeCrafterId={activeCrafterId}
-                    onSelectCrafter={handleSelectCrafter}
                     concurrency={concurrency}
                     onConcurrencyChange={handleConcurrencyChange}
-                    onAbortCrafter={handleAbortCrafter}
-                    onMarkDoneCrafter={handleMarkDoneCrafter}
-                    onUpdateAgentMessages={handleUpdateAgentMessages}
                   />
                 )}
               </div>
