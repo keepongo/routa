@@ -18,7 +18,7 @@ import {useRouter, useParams} from "next/navigation";
 import {ChatPanel} from "@/client/components/chat-panel";
 import {SessionContextPanel} from "@/client/components/session-context-panel";
 import {SpecialistManager} from "@/client/components/specialist-manager";
-import {type CrafterAgent, type CrafterMessage, TaskPanel} from "@/client/components/task-panel";
+import {type CrafterAgent, type CrafterMessage, TaskPanel, CraftersView} from "@/client/components/task-panel";
 import {CollaborativeTaskEditor} from "@/client/components/collaborative-task-editor";
 import {AgentInstallPanel} from "@/client/components/agent-install-panel";
 import {WorkspaceSwitcher} from "@/client/components/workspace-switcher";
@@ -182,7 +182,7 @@ export function SessionPageClient() {
   const leftResizeStartWidthRef = useRef(0);
 
   // ── Left sidebar tab state (Context or Tasks) ───────────────────────
-  const [leftSidebarTab, setLeftSidebarTab] = useState<"context" | "tasks">("context");
+  const [leftSidebarTab, setLeftSidebarTab] = useState<"context" | "tasks">("tasks");
 
   // ── Left sidebar collapse ──────────────────────────────────────────
   const [isLeftSidebarCollapsed, setIsLeftSidebarCollapsed] = useState(false);
@@ -704,6 +704,15 @@ export function SessionPageClient() {
             break;
           }
 
+          case "session_renamed": {
+            // Update the CRAFTER agent's display name when set_agent_name is called
+            const newName = update.name as string | undefined;
+            if (newName) {
+              agent.taskTitle = newName;
+            }
+            break;
+          }
+
           default:
             break;
         }
@@ -1049,6 +1058,16 @@ export function SessionPageClient() {
     const task = routaTasks.find((t) => t.id === taskId);
     if (!task) return null;
 
+    // Enforce concurrency limit for non-collaborative tasks
+    if (concurrency <= 1 && runningCrafterCountRef.current > 0) {
+      console.warn(`[TaskPanel] Concurrency limit reached (${concurrency}). Queuing task ${taskId}.`);
+      routaTaskQueueRef.current.push(taskId);
+      return null;
+    }
+
+    // Pre-increment running count to prevent race conditions
+    runningCrafterCountRef.current++;
+
     // Mark as running
     setRoutaTasks((prev) =>
       prev.map((t) => (t.id === taskId ? { ...t, status: "running" as const } : t))
@@ -1139,6 +1158,10 @@ export function SessionPageClient() {
       }
 
       // Mark status based on delegation outcome
+      if (delegationError) {
+        // Decrement running count since agent didn't actually start
+        runningCrafterCountRef.current = Math.max(0, runningCrafterCountRef.current - 1);
+      }
       setRoutaTasks((prev) =>
         prev.map((t) =>
           t.id === taskId
@@ -1150,6 +1173,8 @@ export function SessionPageClient() {
       return crafterAgent;
     } catch (err) {
       console.error("[TaskPanel] Task execution failed:", err);
+      // Decrement running count on failure
+      runningCrafterCountRef.current = Math.max(0, runningCrafterCountRef.current - 1);
       setRoutaTasks((prev) =>
         prev.map((t) => (t.id === taskId ? { ...t, status: "confirmed" as const } : t))
       );
@@ -1232,6 +1257,31 @@ export function SessionPageClient() {
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [crafterAgents]);
+
+  // ── Sync CRAFTER completion status to collaborative notes ────────────
+  const syncedCrafterStatusRef = useRef<Map<string, string>>(new Map());
+  useEffect(() => {
+    for (const agent of crafterAgents) {
+      const prevStatus = syncedCrafterStatusRef.current.get(agent.id);
+      if (prevStatus === agent.status) continue;
+      syncedCrafterStatusRef.current.set(agent.id, agent.status);
+
+      // Only sync terminal statuses (completed/error) to notes
+      if (agent.status !== "completed" && agent.status !== "error") continue;
+      if (!agent.taskId) continue;
+
+      // Check if the taskId corresponds to a collaborative note
+      const note = notesHook.notes.find((n) => n.id === agent.taskId);
+      if (!note) continue;
+
+      const newTaskStatus = agent.status === "completed" ? "COMPLETED" : "FAILED";
+      if (note.metadata.taskStatus !== newTaskStatus) {
+        notesHook.updateNote(agent.taskId, {
+          metadata: { ...note.metadata, taskStatus: newTaskStatus },
+        });
+      }
+    }
+  }, [crafterAgents, notesHook]);
 
   /**
    * Abort a running CRAFTER agent by sending session/cancel to the child session.
@@ -1324,11 +1374,16 @@ export function SessionPageClient() {
     const note = notesHook.notes.find((n) => n.id === noteId);
     if (!note) return null;
 
-    // Enforce concurrency limit: check active crafter count (note metadata may be stale)
+    // Enforce concurrency limit: check active crafter count
     if (concurrency <= 1 && runningCrafterCountRef.current > 0) {
-      console.warn(`[CollabEditor] Concurrency limit reached (${concurrency}). ${runningCrafterCountRef.current} task(s) still running.`);
+      console.warn(`[CollabEditor] Concurrency limit reached (${concurrency}). ${runningCrafterCountRef.current} task(s) still running. Queuing instead.`);
+      // Queue the task for later execution
+      noteTaskQueueRef.current.push(noteId);
       return null;
     }
+
+    // Pre-increment running count to prevent race conditions with concurrent dispatch
+    runningCrafterCountRef.current++;
 
     // Mark note as in-progress
     await notesHook.updateNote(noteId, {
@@ -1417,6 +1472,8 @@ export function SessionPageClient() {
         await notesHook.updateNote(noteId, {
           metadata: { ...note.metadata, taskStatus: "FAILED" },
         });
+        // Decrement running count since agent didn't actually start
+        runningCrafterCountRef.current = Math.max(0, runningCrafterCountRef.current - 1);
       }
 
       setCrafterAgents((prev) => [...prev, crafterAgent]);
@@ -1425,6 +1482,8 @@ export function SessionPageClient() {
       return crafterAgent;
     } catch (err) {
       console.error("[CollabEditor] Note task execution failed:", err);
+      // Decrement running count on failure
+      runningCrafterCountRef.current = Math.max(0, runningCrafterCountRef.current - 1);
       await notesHook.updateNote(noteId, {
         metadata: { ...note.metadata, taskStatus: "PENDING" },
       });
@@ -1554,11 +1613,16 @@ export function SessionPageClient() {
           </span>
         </a>
 
-        {/* Workspace context */}
+        {/* Workspace switcher */}
         <div className="w-px h-5 bg-gray-200 dark:bg-gray-700" />
-        <span className="text-xs text-gray-400 dark:text-gray-500 hidden sm:inline truncate max-w-[120px]">
-          {effectiveWorkspace.title}
-        </span>
+        <WorkspaceSwitcher
+          workspaces={workspacesHook.workspaces}
+          activeWorkspaceId={workspaceId}
+          onSelect={handleWorkspaceSelect}
+          onCreate={handleWorkspaceCreate}
+          loading={workspacesHook.loading}
+          compact
+        />
 
         {/* Agent selector */}
         <div className="relative">
@@ -1691,7 +1755,7 @@ export function SessionPageClient() {
           ) : (
             /* ─── Expanded sidebar ────────────────────────────────── */
             <>
-          {/* Workspace section */}
+          {/* Sidebar header with codebase + collapse */}
           <div className="px-3 py-2 border-b border-gray-100 dark:border-gray-800 flex items-center justify-between gap-2">
             <div className="flex items-center gap-1.5 min-w-0">
               <svg className="w-3.5 h-3.5 text-indigo-500 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -1710,14 +1774,6 @@ export function SessionPageClient() {
               )}
             </div>
             <div className="flex items-center gap-1">
-              <WorkspaceSwitcher
-                workspaces={workspacesHook.workspaces}
-                activeWorkspaceId={workspaceId}
-                onSelect={handleWorkspaceSelect}
-                onCreate={handleWorkspaceCreate}
-                loading={workspacesHook.loading}
-                compact
-              />
               {/* Collapse button */}
               <button
                 onClick={() => setIsLeftSidebarCollapsed(true)}
@@ -1736,16 +1792,6 @@ export function SessionPageClient() {
             <div className="flex items-center justify-between">
               <div className="flex gap-1 flex-1">
                 <button
-                  onClick={() => setLeftSidebarTab("context")}
-                  className={`flex-1 px-2 py-1 text-[10px] font-medium rounded transition-colors ${
-                    leftSidebarTab === "context"
-                      ? "bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300"
-                      : "text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800"
-                  }`}
-                >
-                  Context
-                </button>
-                <button
                   onClick={() => setLeftSidebarTab("tasks")}
                   className={`flex-1 px-2 py-1 text-[10px] font-medium rounded transition-colors ${
                     leftSidebarTab === "tasks"
@@ -1754,6 +1800,16 @@ export function SessionPageClient() {
                   }`}
                 >
                   Tasks {routaTasks.length > 0 && `(${routaTasks.length})`}
+                </button>
+                <button
+                  onClick={() => setLeftSidebarTab("context")}
+                  className={`flex-1 px-2 py-1 text-[10px] font-medium rounded transition-colors ${
+                    leftSidebarTab === "context"
+                      ? "bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300"
+                      : "text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800"
+                  }`}
+                >
+                  Context
                 </button>
               </div>
               <button
@@ -1876,10 +1932,67 @@ export function SessionPageClient() {
             codebases={codebases}
           />
         </main>
+
+        {/* ─── Right Sidebar: CRAFTERs running status ─────────────── */}
+        {crafterAgents.length > 0 && (
+          <>
+            {/* Right sidebar resize handle */}
+            <div
+              className="hidden md:flex items-center justify-center w-1 cursor-col-resize hover:bg-indigo-500/30 active:bg-indigo-500/50 transition-colors group shrink-0"
+              onMouseDown={handleResizeStart}
+            >
+              <div className="w-0.5 h-8 rounded-full bg-gray-300 dark:bg-gray-600 group-hover:bg-indigo-400 group-active:bg-indigo-500 transition-colors" />
+            </div>
+            <aside
+              className="hidden md:flex shrink-0 border-l border-gray-200 dark:border-gray-800 bg-white dark:bg-[#13151d] flex-col overflow-hidden"
+              style={{ width: `${sidebarWidth}px` }}
+            >
+              {/* CRAFTER agents header */}
+              <div className="px-3 py-2 border-b border-gray-100 dark:border-gray-800 flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-semibold text-gray-900 dark:text-gray-100">
+                    CRAFTERs
+                  </span>
+                  <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-indigo-100 dark:bg-indigo-900/40 text-indigo-600 dark:text-indigo-300">
+                    {crafterAgents.length}
+                  </span>
+                </div>
+                {/* Concurrency control */}
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                    Concurrency
+                  </span>
+                  <div className="flex items-center rounded-md border border-gray-200 dark:border-gray-700 overflow-hidden">
+                    {[1, 2].map((n) => (
+                      <button
+                        key={n}
+                        onClick={() => handleConcurrencyChange(n)}
+                        className={`px-2 py-0.5 text-[11px] font-medium transition-colors ${
+                          concurrency === n
+                            ? "bg-indigo-600 text-white"
+                            : "bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700"
+                        }`}
+                      >
+                        {n}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+              {/* CRAFTERs content */}
+              <CraftersView
+                agents={crafterAgents}
+                activeCrafterId={activeCrafterId}
+                onSelectCrafter={handleSelectCrafter}
+                onUpdateAgentMessages={handleUpdateAgentMessages}
+              />
+            </aside>
+          </>
+        )}
       </div>
 
       {/* ─── Resize overlay (prevents iframe/content interference) ─── */}
-      {isLeftResizing && (
+      {(isLeftResizing || isResizing) && (
         <div className="fixed inset-0 z-50 cursor-col-resize" />
       )}
 

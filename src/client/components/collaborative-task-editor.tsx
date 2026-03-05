@@ -163,12 +163,11 @@ export function CollaborativeTaskEditor({
   };
 
   const handleExecuteSelected = async () => {
-    if (!onExecuteTask) return;
+    if (!onExecuteAll) return;
     const ids = Array.from(selectedNoteIds);
     setSelectedNoteIds(new Set());
-    for (const id of ids) {
-      await onExecuteTask(id);
-    }
+    // Use the concurrency-aware execution path
+    onExecuteAll(concurrency);
   };
 
   return (

@@ -463,6 +463,15 @@ export class RoutaOrchestrator {
           }
         }
 
+        // Store the notification in the child session's own history
+        // so it can be restored on page reload
+        if (this.notificationHandler) {
+          this.notificationHandler(sessionId, {
+            ...params,
+            sessionId,
+          });
+        }
+
         // Forward notifications to the parent session's SSE
         if (this.notificationHandler) {
           this.notificationHandler(parentSessionId, {

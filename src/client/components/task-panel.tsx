@@ -378,7 +378,7 @@ export function CraftersView({
             >
               <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${statusColor} ${agent.status === "running" ? "animate-pulse" : ""}`} />
               <span className="truncate max-w-[120px]">
-                CRAFTER #{i + 1}
+                {agent.taskTitle || `CRAFTER #${i + 1}`}
               </span>
             </button>
           );

@@ -149,6 +149,24 @@ export class NoteTools {
       note.title = params.title;
     }
     note.updatedAt = new Date();
+
+    // When spec note content is replaced, remove old PENDING task notes derived from it
+    // so the left panel resets to reflect the new spec content.
+    if (params.noteId === SPEC_NOTE_ID) {
+      const effectiveSessionId = params.sessionId ?? note.sessionId;
+      const existingTaskNotes = await this.noteStore.listByType(params.workspaceId, "task");
+      const staleTasks = existingTaskNotes.filter(
+        (n) =>
+          n.metadata.parentNoteId === params.noteId &&
+          n.sessionId === effectiveSessionId &&
+          (!n.metadata.taskStatus || n.metadata.taskStatus === TaskStatus.PENDING)
+      );
+      for (const staleNote of staleTasks) {
+        await this.noteStore.delete(staleNote.id, params.workspaceId);
+        this.broadcaster?.notifyDeleted(staleNote.id, params.workspaceId, "agent");
+      }
+    }
+
     await this.saveNote(note, "agent");
 
     // Auto-convert @@@task blocks if enabled (default: true for spec note)
@@ -396,6 +414,7 @@ export class NoteTools {
     }
 
     await this.noteStore.delete(params.noteId, params.workspaceId);
+    this.broadcaster?.notifyDeleted(params.noteId, params.workspaceId, "agent");
     return successResult({ deleted: true, noteId: params.noteId });
   }
 }
