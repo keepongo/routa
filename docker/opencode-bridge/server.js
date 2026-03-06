@@ -76,11 +76,6 @@ const OPENCODE_CONFIG_FILE = path.join(OPENCODE_CONFIG_DIR, 'opencode.json')
 const ROUTA_MCP_URL = process.env.ROUTA_MCP_URL || ''
 
 function setupMcpConfig() {
-  if (!ROUTA_MCP_URL) {
-    console.log('[bridge] ROUTA_MCP_URL not set — skipping MCP config')
-    return
-  }
-
   try {
     fs.mkdirSync(OPENCODE_CONFIG_DIR, { recursive: true })
 
@@ -94,8 +89,11 @@ function setupMcpConfig() {
     // Merge MCP servers (preserving existing user config)
     const mcp = existing.mcp || {}
 
-    // Routa coordination server (HTTP/SSE)
-    mcp['routa-coordination'] = { type: 'remote', url: ROUTA_MCP_URL, enabled: true }
+    // Routa coordination server (HTTP/SSE) — only if URL is provided
+    if (ROUTA_MCP_URL) {
+      mcp['routa-coordination'] = { type: 'remote', url: ROUTA_MCP_URL, enabled: true }
+      console.log(`[bridge]   routa-coordination → ${ROUTA_MCP_URL}`)
+    }
 
     // Playwright MCP (stdio) — available for headless browser testing
     mcp['playwright'] = {
@@ -105,12 +103,17 @@ function setupMcpConfig() {
     }
 
     existing.mcp = mcp
+
+    // Configure default model if specified via OPENCODE_MODEL env var
+    if (process.env.OPENCODE_MODEL) {
+      existing.model = process.env.OPENCODE_MODEL
+      console.log(`[bridge]   model → ${process.env.OPENCODE_MODEL}`)
+    }
+
     fs.writeFileSync(OPENCODE_CONFIG_FILE, JSON.stringify(existing, null, 2) + '\n', 'utf-8')
-    console.log(`[bridge] MCP config written to ${OPENCODE_CONFIG_FILE}`)
-    console.log(`[bridge]   routa-coordination → ${ROUTA_MCP_URL}`)
-    console.log(`[bridge]   playwright → npx @playwright/mcp --headless`)
+    console.log(`[bridge] Config written to ${OPENCODE_CONFIG_FILE}`)
   } catch (err) {
-    console.error('[bridge] Failed to write MCP config:', err.message)
+    console.error('[bridge] Failed to write config:', err.message)
   }
 }
 

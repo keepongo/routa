@@ -88,6 +88,27 @@ export class DockerProcessManager {
       runParts.push(`-e GITHUB_TOKEN=${shellEscape(process.env.GITHUB_TOKEN)}`);
     }
 
+    // Forward common AI provider API keys from the host so that the opencode
+    // agent can authenticate against Anthropic / OpenAI / etc. without the user
+    // having to re-configure credentials inside the container.
+    const providerKeyVars = [
+      "ANTHROPIC_API_KEY",
+      "ANTHROPIC_AUTH_TOKEN",
+      "OPENAI_API_KEY",
+      "OPENAI_API_BASE",
+      "OPENAI_BASE_URL",
+      "GEMINI_API_KEY",
+      "OPENROUTER_API_KEY",
+      "XAI_API_KEY",
+      "AZURE_OPENAI_API_KEY",
+      "AZURE_OPENAI_ENDPOINT",
+    ];
+    for (const key of providerKeyVars) {
+      if (process.env[key]) {
+        runParts.push(`-e ${shellEscape(`${key}=${process.env[key]}`)}`);
+      }
+    }
+
     for (const [key, value] of Object.entries(labels)) {
       runParts.push(`--label ${shellEscape(`${key}=${value}`)}`);
     }

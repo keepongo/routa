@@ -379,6 +379,19 @@ export function ChatPanel({
             }
             break;
           }
+          case "acp_status": {
+            const acpStatusVal = update.status as string | undefined;
+            const acpError = update.error as string | undefined;
+            if (acpStatusVal === "error" && acpError) {
+              messages.push({
+                id: `acp-status-error-${sessionId}-${Date.now()}`,
+                role: "info",
+                content: `⚠ Session failed to start: ${acpError}`,
+                timestamp: new Date(),
+              });
+            }
+            break;
+          }
         }
         lastKind = kind;
       }
@@ -859,8 +872,20 @@ export function ChatPanel({
 
           case "available_commands_update":
           case "config_option_update":
-          case "acp_status":
           case "session_info_update": {
+            break;
+          }
+          case "acp_status": {
+            const acpStatusVal = update.status as string | undefined;
+            const acpError = update.error as string | undefined;
+            if (acpStatusVal === "error" && acpError) {
+              arr.push({
+                id: `acp-status-error-${sid}-${Date.now()}`,
+                role: "info",
+                content: `⚠ Session failed to start: ${acpError}`,
+                timestamp: new Date(),
+              });
+            }
             break;
           }
           case "tool_call_start": {

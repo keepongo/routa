@@ -414,11 +414,24 @@ export async function POST(request: NextRequest) {
               forwardSessionUpdate
             );
           } else if (isDockerOpenCode) {
+            // Build extra env so opencode inside the container picks up API credentials.
+            // Priority: explicit apiKey from request → host environment variables.
+            const dockerExtraEnv: Record<string, string> = {};
+            if (apiKey) {
+              // Inject under both common variable names so opencode auto-detects it
+              // regardless of which one it checks for Claude/Anthropic models.
+              dockerExtraEnv["ANTHROPIC_API_KEY"] = apiKey;
+              dockerExtraEnv["ANTHROPIC_AUTH_TOKEN"] = apiKey;
+            }
+            if (model) {
+              dockerExtraEnv["OPENCODE_MODEL"] = model;
+            }
             acpSessionId = await manager.createDockerSession(
               sessionId,
               cwd,
               forwardSessionUpdate,
               process.env.ROUTA_DOCKER_OPENCODE_IMAGE ?? DEFAULT_DOCKER_AGENT_IMAGE,
+              Object.keys(dockerExtraEnv).length > 0 ? dockerExtraEnv : undefined,
             );
           } else if (isClaudeCodeSdk) {
             const instanceConfig: AgentInstanceConfig = {

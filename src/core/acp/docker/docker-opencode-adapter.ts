@@ -42,7 +42,12 @@ export class DockerOpenCodeAdapter {
     });
 
     if (!res.ok) {
-      throw new Error(`Failed to create docker OpenCode session: ${res.status} ${res.statusText}`);
+      let detail = "";
+      try {
+        const body = await res.json() as { error?: string };
+        if (body.error) detail = `: ${body.error}`;
+      } catch { /* ignore parse failure */ }
+      throw new Error(`Failed to create docker OpenCode session: ${res.status} ${res.statusText}${detail}`);
     }
 
     const data = (await res.json()) as DockerCreateSessionResponse;

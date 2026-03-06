@@ -267,6 +267,33 @@ export class AcpProcessManager {
 
             return acpSessionId;
         } catch (err) {
+            // Emit container logs so the user can see why the session failed
+            try {
+                const bridge = (await import("@/core/platform")).getServerBridge();
+                const { shellEscape } = await import("./docker/utils");
+                const { stdout, stderr } = await bridge.process.exec(
+                    `docker logs --tail 50 ${shellEscape(container.containerName)}`,
+                    { timeout: 5_000 },
+                );
+                const logs = `${stdout}${stderr ? `\n${stderr}` : ""}`.trim();
+                if (logs) {
+                    onNotification({
+                        jsonrpc: "2.0",
+                        method: "session/update",
+                        params: {
+                            sessionId,
+                            update: {
+                                sessionUpdate: "process_output",
+                                source: "docker",
+                                data: `[Container logs on failure]\n${logs}\n`,
+                                displayName: "Docker",
+                            },
+                        },
+                    });
+                }
+            } catch {
+                // Log capture failure is non-fatal
+            }
             await dockerManager.stopContainer(sessionId).catch(() => {});
             throw err;
         }
