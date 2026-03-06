@@ -1,27 +1,43 @@
+import type { Page } from "@playwright/test";
 import { expect, test } from "@playwright/test";
 
-const SESSION_URL = "http://localhost:3000/workspace/default/sessions/1eed8a78-7673-4a1b-b6b9-cd68dc5b75c7";
+const BASE_URL = process.env.ROUTA_TEST_BASE_URL ?? "http://localhost:3000";
+const SESSION_URL = `${BASE_URL}/workspace/default/sessions/1eed8a78-7673-4a1b-b6b9-cd68dc5b75c7`;
+
+async function openSession(page: Page, viewport: { width: number; height: number }) {
+  await page.addInitScript(() => {
+    window.localStorage.setItem("routa.session.left-sidebar-collapsed", "0");
+    window.localStorage.setItem("routa.session.crafter-rail-expanded", "0");
+  });
+  await page.setViewportSize(viewport);
+  await page.goto(SESSION_URL);
+  await page.waitForLoadState("domcontentloaded");
+}
 
 test.describe("Session layout UX", () => {
   test.setTimeout(45_000);
 
   test("desktop keeps sessions as the primary left-sidebar view", async ({ page }) => {
-    await page.setViewportSize({ width: 1440, height: 980 });
-    await page.goto(SESSION_URL);
-    await page.waitForLoadState("domcontentloaded");
+    await openSession(page, { width: 1440, height: 980 });
 
     const sidebar = page.locator("aside").first();
     await expect(sidebar).toBeVisible();
     await expect(page.locator('button:has-text("Sessions")')).toBeVisible();
+    await expect(page.locator('button:has-text("Spec")')).toBeVisible();
+    await expect(page.locator('button:has-text("Tasks")')).toBeVisible();
     await expect(page.locator("text=Quick Access")).toBeVisible();
     await expect(page.locator("text=Task Snapshot")).toBeVisible();
     await expect(page.locator('button:has-text("Open Tasks")')).toBeVisible();
+
+    const snapshot = page.getByTestId("session-task-snapshot");
+    const totalLabel = await snapshot.locator("text=/\\d+ total/").first().textContent();
+    const totalCount = Number(totalLabel?.match(/(\d+)/)?.[1] ?? 0);
+    const visibleItems = await page.getByTestId("session-task-snapshot-item").count();
+    expect(visibleItems).toBe(totalCount);
   });
 
   test("mobile opens the session sidebar as a drawer", async ({ page }) => {
-    await page.setViewportSize({ width: 390, height: 844 });
-    await page.goto(SESSION_URL);
-    await page.waitForLoadState("domcontentloaded");
+    await openSession(page, { width: 390, height: 844 });
 
     await expect(page.locator("aside").first()).not.toBeVisible();
 
