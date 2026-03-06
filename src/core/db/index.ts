@@ -42,29 +42,31 @@ export type DatabaseDriver = "postgres" | "sqlite" | "memory";
  *
  * Priority:
  * 1. ROUTA_DB_DRIVER env var (explicit override)
- * 2. DATABASE_URL present → postgres
- * 3. Desktop platform (Tauri/Electron) → sqlite
- * 4. Fallback → memory
+ * 2. Serverless (Vercel / AWS Lambda) + DATABASE_URL → postgres
+ * 3. Serverless without DATABASE_URL → memory
+ * 4. Non-serverless (localhost, Tauri, desktop) → sqlite
+ *
+ * Rationale: Local/desktop environments always use SQLite for reliability —
+ * cloud Postgres (e.g. Neon) auto-suspends and causes session history loss
+ * when DATABASE_URL is present in .env.local but the app runs locally.
+ * Set ROUTA_DB_DRIVER=postgres to force Postgres in local development.
  */
 export function getDatabaseDriver(): DatabaseDriver {
-  // Explicit override
+  // 1. Explicit override always wins
   const driverOverride = process.env.ROUTA_DB_DRIVER;
   if (driverOverride === "postgres" || driverOverride === "sqlite" || driverOverride === "memory") {
     return driverOverride;
   }
 
-  // Postgres if DATABASE_URL is set
-  if (process.env.DATABASE_URL) {
-    return "postgres";
+  // 2. Serverless deployments: use Postgres if available, else memory
+  if (process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME) {
+    return process.env.DATABASE_URL ? "postgres" : "memory";
   }
 
-  // Desktop environments default to SQLite
-  // (Detected by absence of DATABASE_URL in non-serverless env)
-  if (!process.env.VERCEL && !process.env.AWS_LAMBDA_FUNCTION_NAME) {
-    return "sqlite";
-  }
-
-  return "memory";
+  // 3. Non-serverless (localhost, Tauri, desktop): always use SQLite
+  // Even if DATABASE_URL is present (e.g. pulled from Vercel via `vercel env pull`),
+  // local environments prefer local SQLite to avoid cloud dependency.
+  return "sqlite";
 }
 
 // ─── Postgres Connection ────────────────────────────────────────────────

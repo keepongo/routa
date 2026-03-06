@@ -224,15 +224,33 @@ export async function saveHistoryToDb(
 
   // 2. Also append to local JSONL (non-serverless only)
   // We need the session's cwd to locate the JSONL file.
-  // Try to get it from the in-memory store.
+  // Try in-memory store first; fall back to SQLite session record so writes
+  // still succeed after a server restart when the in-memory store is empty.
   if (!isServerless()) {
     try {
+      let cwd: string | undefined;
+
+      // Primary: in-memory store (fast, always available during active session)
       const { getHttpSessionStore } = await import("@/core/acp/http-session-store");
-      const store = getHttpSessionStore();
-      const session = store.getSession(sessionId);
-      if (session?.cwd) {
-        const local = new LocalSessionProvider(session.cwd);
-        // Append each history entry as a JSONL message
+      const memStore = getHttpSessionStore();
+      cwd = memStore.getSession(sessionId)?.cwd;
+
+      // Fallback: SQLite session record (available after server restart)
+      if (!cwd && driver === "sqlite") {
+        try {
+          // eslint-disable-next-line no-eval
+          const dynamicRequire = eval("require") as NodeRequire;
+          const { getSqliteDatabase } = dynamicRequire("../db/sqlite");
+          const db = getSqliteDatabase();
+          const sqliteSession = await new SqliteAcpSessionStore(db).get(sessionId);
+          cwd = sqliteSession?.cwd;
+        } catch {
+          // ignore — cwd stays undefined
+        }
+      }
+
+      if (cwd) {
+        const local = new LocalSessionProvider(cwd);
         for (const entry of history) {
           const jsonlEntry: SessionJsonlEntry = {
             uuid: (entry as Record<string, unknown>).uuid as string ?? sessionId,
@@ -288,19 +306,50 @@ export async function loadHistoryFromDb(
   const driver = getDatabaseDriver();
   if (driver === "memory") return [];
 
+  let dbHistory: import("@/core/acp/http-session-store").SessionUpdateNotification[] = [];
+  let sessionCwd: string | undefined;
+
   try {
     if (driver === "postgres") {
       const db = getPostgresDatabase();
-      return (await new PgAcpSessionStore(db).getHistory(sessionId)) as import("@/core/acp/http-session-store").SessionUpdateNotification[];
+      dbHistory = (await new PgAcpSessionStore(db).getHistory(sessionId)) as import("@/core/acp/http-session-store").SessionUpdateNotification[];
     } else {
       // eslint-disable-next-line no-eval
       const dynamicRequire = eval("require") as NodeRequire;
       const { getSqliteDatabase } = dynamicRequire("../db/sqlite");
       const db = getSqliteDatabase();
-      return (await new SqliteAcpSessionStore(db).getHistory(sessionId)) as import("@/core/acp/http-session-store").SessionUpdateNotification[];
+      const sqliteStore = new SqliteAcpSessionStore(db);
+      dbHistory = (await sqliteStore.getHistory(sessionId)) as import("@/core/acp/http-session-store").SessionUpdateNotification[];
+      // Also capture cwd from SQLite so we can try the JSONL fallback below
+      if (!isServerless()) {
+        const session = await sqliteStore.get(sessionId);
+        sessionCwd = session?.cwd;
+      }
     }
   } catch (err) {
     console.error(`[SessionDB] Failed to load history from ${driver}:`, err);
-    return [];
   }
+
+  // For non-serverless (localhost / Tauri): also try the local JSONL file.
+  // JSONL is an append-only log written alongside the DB, so it may contain
+  // more recent entries when the process was interrupted before the buffer flushed.
+  if (!isServerless() && sessionCwd) {
+    try {
+      const local = new LocalSessionProvider(sessionCwd);
+      const rawEntries = await local.getHistory(sessionId);
+      // Each entry is a SessionJsonlEntry wrapper: { uuid, type, message, sessionId, timestamp }
+      const jsonlHistory = rawEntries
+        .map((e) => (e as Record<string, unknown>).message)
+        .filter(Boolean) as import("@/core/acp/http-session-store").SessionUpdateNotification[];
+
+      if (jsonlHistory.length > dbHistory.length) {
+        console.log(`[SessionDB] JSONL has more history (${jsonlHistory.length}) than DB (${dbHistory.length}) for session ${sessionId}, using JSONL`);
+        return jsonlHistory;
+      }
+    } catch {
+      // Non-fatal — fall through to DB history
+    }
+  }
+
+  return dbHistory;
 }
