@@ -177,6 +177,8 @@ function initializeSqliteTables(db: SqliteDatabase): void {
 
   // Add branch column to existing acp_sessions tables
   try { db.run(sql`ALTER TABLE acp_sessions ADD COLUMN branch TEXT`); } catch { /* column already exists */ }
+  // Add parent_session_id column to existing acp_sessions tables
+  try { db.run(sql`ALTER TABLE acp_sessions ADD COLUMN parent_session_id TEXT`); } catch { /* column already exists */ }
 
   db.run(sql`
     CREATE TABLE IF NOT EXISTS codebases (
@@ -219,6 +221,89 @@ function initializeSqliteTables(db: SqliteDatabase): void {
       skill_id TEXT NOT NULL REFERENCES skills(id) ON DELETE CASCADE,
       installed_at INTEGER NOT NULL DEFAULT (unixepoch('now') * 1000),
       PRIMARY KEY (workspace_id, skill_id)
+    )
+  `);
+
+  db.run(sql`
+    CREATE TABLE IF NOT EXISTS background_tasks (
+      id TEXT PRIMARY KEY,
+      title TEXT NOT NULL,
+      prompt TEXT NOT NULL,
+      agent_id TEXT NOT NULL,
+      workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+      status TEXT NOT NULL DEFAULT 'PENDING',
+      triggered_by TEXT NOT NULL DEFAULT 'user',
+      trigger_source TEXT NOT NULL DEFAULT 'manual',
+      priority TEXT NOT NULL DEFAULT 'NORMAL',
+      result_session_id TEXT,
+      error_message TEXT,
+      attempts INTEGER NOT NULL DEFAULT 0,
+      max_attempts INTEGER NOT NULL DEFAULT 1,
+      started_at INTEGER,
+      completed_at INTEGER,
+      created_at INTEGER NOT NULL DEFAULT (unixepoch('now') * 1000),
+      updated_at INTEGER NOT NULL DEFAULT (unixepoch('now') * 1000),
+      last_activity INTEGER,
+      current_activity TEXT,
+      tool_call_count INTEGER DEFAULT 0,
+      input_tokens INTEGER DEFAULT 0,
+      output_tokens INTEGER DEFAULT 0,
+      workflow_run_id TEXT,
+      workflow_step_name TEXT,
+      depends_on_task_ids TEXT,
+      task_output TEXT
+    )
+  `);
+
+  db.run(sql`
+    CREATE TABLE IF NOT EXISTS github_webhook_configs (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      repo TEXT NOT NULL,
+      github_token TEXT NOT NULL,
+      webhook_secret TEXT NOT NULL DEFAULT '',
+      event_types TEXT NOT NULL DEFAULT '[]',
+      label_filter TEXT DEFAULT '[]',
+      trigger_agent_id TEXT NOT NULL,
+      workflow_id TEXT,
+      workspace_id TEXT,
+      enabled INTEGER NOT NULL DEFAULT 1,
+      prompt_template TEXT,
+      created_at INTEGER NOT NULL DEFAULT (unixepoch('now') * 1000),
+      updated_at INTEGER NOT NULL DEFAULT (unixepoch('now') * 1000)
+    )
+  `);
+
+  db.run(sql`
+    CREATE TABLE IF NOT EXISTS schedules (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      cron_expr TEXT NOT NULL,
+      task_prompt TEXT NOT NULL,
+      agent_id TEXT NOT NULL,
+      workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+      enabled INTEGER NOT NULL DEFAULT 1,
+      last_run_at INTEGER,
+      next_run_at INTEGER,
+      last_task_id TEXT,
+      prompt_template TEXT,
+      created_at INTEGER NOT NULL DEFAULT (unixepoch('now') * 1000),
+      updated_at INTEGER NOT NULL DEFAULT (unixepoch('now') * 1000)
+    )
+  `);
+
+  db.run(sql`
+    CREATE TABLE IF NOT EXISTS webhook_trigger_logs (
+      id TEXT PRIMARY KEY,
+      config_id TEXT NOT NULL,
+      event_type TEXT NOT NULL,
+      event_action TEXT,
+      payload TEXT DEFAULT '{}',
+      background_task_id TEXT,
+      signature_valid INTEGER NOT NULL DEFAULT 0,
+      outcome TEXT NOT NULL DEFAULT 'triggered',
+      error_message TEXT,
+      created_at INTEGER NOT NULL DEFAULT (unixepoch('now') * 1000)
     )
   `);
 

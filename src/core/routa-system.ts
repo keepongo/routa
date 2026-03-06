@@ -187,11 +187,9 @@ export function createSqliteSystem(): RoutaSystem {
   let noteToolsBroadcast = false;
 
   try {
-    // Use indirect require to prevent webpack from statically analyzing these imports.
-    // These modules depend on better-sqlite3 which is only available on desktop.
-    // eslint-disable-next-line no-eval
-    const dynamicRequire = eval("require") as NodeRequire;
-    const { getSqliteDatabase } = dynamicRequire("./db/sqlite");
+    // better-sqlite3 is listed in serverExternalPackages (next.config.ts),
+    // so webpack leaves the native addon as a runtime require.
+    const { getSqliteDatabase } = require("./db/sqlite") as typeof import("./db/sqlite");
     const {
       SqliteAgentStore,
       SqliteConversationStore,
@@ -201,7 +199,7 @@ export function createSqliteSystem(): RoutaSystem {
       SqliteCodebaseStore,
       SqliteBackgroundTaskStore,
       SqliteScheduleStore,
-    } = dynamicRequire("./db/sqlite-stores");
+    } = require("./db/sqlite-stores") as typeof import("./db/sqlite-stores");
 
     const db = getSqliteDatabase();
     agentStore = new SqliteAgentStore(db);

@@ -68,9 +68,7 @@ export async function persistSessionToDb(data: SessionPersistData): Promise<void
         const db = getPostgresDatabase();
         await new PgAcpSessionStore(db).save(sessionRecord);
       } else {
-        // eslint-disable-next-line no-eval
-        const dynamicRequire = eval("require") as NodeRequire;
-        const { getSqliteDatabase } = dynamicRequire("../db/sqlite");
+        const { getSqliteDatabase } = require("../db/sqlite") as typeof import("../db/sqlite");
         const db = getSqliteDatabase();
         await new SqliteAcpSessionStore(db).save(sessionRecord);
       }
@@ -116,9 +114,7 @@ export async function deleteSessionFromDb(sessionId: string): Promise<void> {
         const db = getPostgresDatabase();
         await new PgAcpSessionStore(db).delete(sessionId);
       } else {
-        // eslint-disable-next-line no-eval
-        const dynamicRequire = eval("require") as NodeRequire;
-        const { getSqliteDatabase } = dynamicRequire("../db/sqlite");
+        const { getSqliteDatabase } = require("../db/sqlite") as typeof import("../db/sqlite");
         const db = getSqliteDatabase();
         await new SqliteAcpSessionStore(db).delete(sessionId);
       }
@@ -141,9 +137,7 @@ export async function renameSessionInDb(sessionId: string, name: string): Promis
         const db = getPostgresDatabase();
         await new PgAcpSessionStore(db).rename(sessionId, name);
       } else {
-        // eslint-disable-next-line no-eval
-        const dynamicRequire = eval("require") as NodeRequire;
-        const { getSqliteDatabase } = dynamicRequire("../db/sqlite");
+        const { getSqliteDatabase } = require("../db/sqlite") as typeof import("../db/sqlite");
         const db = getSqliteDatabase();
         await new SqliteAcpSessionStore(db).rename(sessionId, name);
       }
@@ -178,9 +172,7 @@ export async function hydrateSessionsFromDb(): Promise<Array<{
       const db = getPostgresDatabase();
       return await new PgAcpSessionStore(db).list();
     } else {
-      // eslint-disable-next-line no-eval
-      const dynamicRequire = eval("require") as NodeRequire;
-      const { getSqliteDatabase } = dynamicRequire("../db/sqlite");
+      const { getSqliteDatabase } = require("../db/sqlite") as typeof import("../db/sqlite");
       const db = getSqliteDatabase();
       return await new SqliteAcpSessionStore(db).list();
     }
@@ -207,9 +199,7 @@ export async function saveHistoryToDb(
         const merged = mergeHistory(session.messageHistory ?? [], history);
         await pgStore.save({ ...session, messageHistory: merged, updatedAt: new Date() });
       } else {
-        // eslint-disable-next-line no-eval
-        const dynamicRequire = eval("require") as NodeRequire;
-        const { getSqliteDatabase } = dynamicRequire("../db/sqlite");
+        const { getSqliteDatabase } = require("../db/sqlite") as typeof import("../db/sqlite");
         const db = getSqliteDatabase();
         const sqliteStore = new SqliteAcpSessionStore(db);
         const session = await sqliteStore.get(sessionId);
@@ -238,9 +228,7 @@ export async function saveHistoryToDb(
       // Fallback: SQLite session record (available after server restart)
       if (!cwd && driver === "sqlite") {
         try {
-          // eslint-disable-next-line no-eval
-          const dynamicRequire = eval("require") as NodeRequire;
-          const { getSqliteDatabase } = dynamicRequire("../db/sqlite");
+          const { getSqliteDatabase } = require("../db/sqlite") as typeof import("../db/sqlite");
           const db = getSqliteDatabase();
           const sqliteSession = await new SqliteAcpSessionStore(db).get(sessionId);
           cwd = sqliteSession?.cwd;
@@ -314,9 +302,7 @@ export async function loadHistoryFromDb(
       const db = getPostgresDatabase();
       dbHistory = (await new PgAcpSessionStore(db).getHistory(sessionId)) as import("@/core/acp/http-session-store").SessionUpdateNotification[];
     } else {
-      // eslint-disable-next-line no-eval
-      const dynamicRequire = eval("require") as NodeRequire;
-      const { getSqliteDatabase } = dynamicRequire("../db/sqlite");
+      const { getSqliteDatabase } = require("../db/sqlite") as typeof import("../db/sqlite");
       const db = getSqliteDatabase();
       const sqliteStore = new SqliteAcpSessionStore(db);
       dbHistory = (await sqliteStore.getHistory(sessionId)) as import("@/core/acp/http-session-store").SessionUpdateNotification[];

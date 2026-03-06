@@ -104,3 +104,4 @@ apps/desktop/src-tauri/icons/ios/
 target/
 .playwright-mcp/*
 *.png
+routa.db-shm

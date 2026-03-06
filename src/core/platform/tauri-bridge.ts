@@ -340,9 +340,7 @@ class TauriDb implements IPlatformDb {
       // Lazy-load the SQLite database using indirect require
       // to prevent webpack from bundling better-sqlite3 in web builds.
       try {
-        // eslint-disable-next-line no-eval
-        const dynamicRequire = eval("require") as NodeRequire;
-        const { getSqliteDatabase } = dynamicRequire("@/core/db/sqlite");
+        const { getSqliteDatabase } = require("@/core/db/sqlite") as typeof import("@/core/db/sqlite");
         this._db = getSqliteDatabase();
       } catch {
         throw new Error(
