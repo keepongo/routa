@@ -508,7 +508,7 @@ class HttpSessionStore {
       params: {
         sessionId,
         update: {
-          sessionUpdate: "agent_thought_chunk",
+          sessionUpdate: "acp_status",
           content: { type: "text", text: "Connected to ACP session." },
         },
       },
