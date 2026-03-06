@@ -14,7 +14,7 @@
  */
 
 import {useCallback, useEffect, useRef, useState} from "react";
-import {useRouter, useParams} from "next/navigation";
+import {useRouter, useParams, useSearchParams} from "next/navigation";
 import {ChatPanel} from "@/client/components/chat-panel";
 import {SpecialistManager} from "@/client/components/specialist-manager";
 import {type CrafterAgent, type CrafterMessage, TaskPanel, CraftersView} from "@/client/components/task-panel";
@@ -25,10 +25,12 @@ import {CodebasePicker} from "@/client/components/codebase-picker";
 import {useWorkspaces, useCodebases} from "@/client/hooks/use-workspaces";
 import {useAcp} from "@/client/hooks/use-acp";
 import {useNotes} from "@/client/hooks/use-notes";
+import {BrowserAcpClient} from "@/client/acp-client";
 import type {RepoSelection} from "@/client/components/repo-picker";
 import type {ParsedTask} from "@/client/utils/task-block-parser";
 import {consumePendingPrompt} from "@/client/utils/pending-prompt";
 import {SettingsPanel, loadDefaultProviders, loadProviderConnectionConfig, getModelDefinitionByAlias} from "@/client/components/settings-panel";
+import {getDesktopApiBaseUrl, shouldSuppressTeardownError} from "@/client/utils/diagnostics";
 
 type AgentRole = "CRAFTER" | "ROUTA" | "GATE" | "DEVELOPER";
 
@@ -38,6 +40,14 @@ interface SpecialistOption {
   name: string;
   role: AgentRole;
   model?: string;
+}
+
+interface SessionRecord {
+  sessionId: string;
+  name?: string;
+  provider?: string;
+  role?: string;
+  parentSessionId?: string;
 }
 
 /** Built-in roles always available in the selector */
@@ -122,9 +132,11 @@ function useRealParams() {
 
 export function SessionPageClient() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { workspaceId, sessionId, isResolved } = useRealParams();
 
   const [refreshKey, setRefreshKey] = useState(0);
+  const [focusedSessionId, setFocusedSessionId] = useState<string | null>(null);
   const [selectedAgent, setSelectedAgent] = useState<AgentRole>("ROUTA");
   const [selectedSpecialistId, setSelectedSpecialistId] = useState<string | null>(null);
   const [specialists, setSpecialists] = useState<SpecialistOption[]>([]);
@@ -189,6 +201,7 @@ export function SessionPageClient() {
   const [showAgentInstallPopup, setShowAgentInstallPopup] = useState(false);
   const [showSettingsPanel, setShowSettingsPanel] = useState(false);
   const [showSpecialistManager, setShowSpecialistManager] = useState(false);
+  const navigationTargetRef = useRef<string | null>(null);
 
   // Handle custom events for specialist manager
   useEffect(() => {
@@ -815,9 +828,9 @@ export function SessionPageClient() {
   }, [isSessionEmpty]);
 
   /** Resolve effective provider + model + connection config: explicit > per-role default > global selection */
-  const resolveAgentConfig = useCallback((explicitProvider?: string) => {
+  const resolveAgentConfig = useCallback((role: AgentRole = selectedAgent, explicitProvider?: string) => {
     const defaults = loadDefaultProviders();
-    const roleConfig = defaults[selectedAgent];
+    const roleConfig = defaults[role];
     const effectiveProvider = explicitProvider || roleConfig?.provider || acp.selectedProvider;
     const modelAliasOrName = roleConfig?.model;
     const def = modelAliasOrName ? getModelDefinitionByAlias(modelAliasOrName) : undefined;
@@ -830,6 +843,75 @@ export function SessionPageClient() {
     };
   }, [selectedAgent, acp.selectedProvider]);
 
+  const buildSessionHref = useCallback((targetSessionId: string, focusId?: string | null) => {
+    const params = new URLSearchParams(searchParams.toString());
+    if (focusId && focusId !== targetSessionId) {
+      params.set("focus", focusId);
+    } else {
+      params.delete("focus");
+    }
+
+    const query = params.toString();
+    return `/workspace/${workspaceId}/sessions/${targetSessionId}${query ? `?${query}` : ""}`;
+  }, [searchParams, workspaceId]);
+
+  const fetchSessionRecord = useCallback(async (targetSessionId: string): Promise<SessionRecord | null> => {
+    const response = await fetch(`/api/sessions/${targetSessionId}`, { cache: "no-store" });
+    if (!response.ok) return null;
+    const data = await response.json();
+    return (data?.session ?? null) as SessionRecord | null;
+  }, []);
+
+  const resolveSessionNavigationTarget = useCallback(async (targetSessionId: string) => {
+    const session = await fetchSessionRecord(targetSessionId);
+    if (session?.parentSessionId) {
+      return {
+        routeSessionId: session.parentSessionId,
+        focusedSessionId: session.sessionId,
+      };
+    }
+
+    return {
+      routeSessionId: targetSessionId,
+      focusedSessionId: null,
+    };
+  }, [fetchSessionRecord]);
+
+  useEffect(() => {
+    if (!isResolved || sessionId === "__placeholder__") return;
+
+    let cancelled = false;
+
+    const syncSessionRoute = async () => {
+      const target = await resolveSessionNavigationTarget(sessionId);
+      if (cancelled) return;
+
+      const focusFromQuery = searchParams.get("focus");
+      const nextFocusedSessionId = target.focusedSessionId ?? (focusFromQuery && focusFromQuery !== target.routeSessionId ? focusFromQuery : null);
+      setFocusedSessionId(nextFocusedSessionId);
+
+      if (target.routeSessionId === sessionId) {
+        navigationTargetRef.current = null;
+        return;
+      }
+
+      const nextHref = buildSessionHref(target.routeSessionId, target.focusedSessionId);
+      if (navigationTargetRef.current === nextHref) {
+        return;
+      }
+      navigationTargetRef.current = nextHref;
+      router.replace(nextHref);
+    };
+
+    syncSessionRoute().catch((error) => {
+      console.warn("[SessionPage] Failed to resolve session navigation target:", error);
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [buildSessionHref, isResolved, resolveSessionNavigationTarget, router, searchParams, sessionId]);
+
   const handleCreateSession = useCallback(
     async (provider: string) => {
       await ensureConnected();
@@ -841,7 +923,7 @@ export function SessionPageClient() {
       const branch = repoSelection?.branch || undefined;
       // Always pass the selected role - don't skip CRAFTER
       const role = selectedAgent;
-      const { provider: effectiveProvider, model: resolvedModel, baseUrl, apiKey } = resolveAgentConfig(provider);
+      const { provider: effectiveProvider, model: resolvedModel, baseUrl, apiKey } = resolveAgentConfig(role, provider);
       console.log(`[handleCreateSession] Creating session: provider=${effectiveProvider}, model=${resolvedModel}, role=${role}, specialistId=${selectedSpecialistId}`);
       const result = await acp.createSession(cwd, effectiveProvider, undefined, role, workspaceId, resolvedModel, undefined, selectedSpecialistId ?? undefined, baseUrl, apiKey, branch);
       if (result?.sessionId) {
@@ -855,13 +937,16 @@ export function SessionPageClient() {
     async (newSessionId: string) => {
       await ensureConnected();
 
+      const target = await resolveSessionNavigationTarget(newSessionId);
+
       // Delete previous empty session before switching
       await deleteEmptySession(sessionId);
 
-      acp.selectSession(newSessionId);
-      router.push(`/workspace/${workspaceId}/sessions/${newSessionId}`);
+      setFocusedSessionId(target.focusedSessionId);
+      acp.selectSession(target.routeSessionId);
+      router.push(buildSessionHref(target.routeSessionId, target.focusedSessionId));
     },
-    [acp, ensureConnected, sessionId, deleteEmptySession, workspaceId, router]
+    [acp, buildSessionHref, deleteEmptySession, ensureConnected, resolveSessionNavigationTarget, router, sessionId]
   );
 
   const ensureSessionForChat = useCallback(async (cwd?: string, provider?: string, modeId?: string, model?: string): Promise<string | null> => {
@@ -871,7 +956,7 @@ export function SessionPageClient() {
 
     // Fallback: create a new session
     const role = selectedAgent;
-    const { provider: effectiveProvider, model: resolvedModel, baseUrl, apiKey } = resolveAgentConfig(provider);
+    const { provider: effectiveProvider, model: resolvedModel, baseUrl, apiKey } = resolveAgentConfig(role, provider);
     // Explicit model (from chat input) takes priority over per-role model config
     const effectiveModel = model ?? resolvedModel;
     const branch = repoSelection?.branch || undefined;
@@ -1284,7 +1369,7 @@ export function SessionPageClient() {
    * Execute a single collaborative task note by creating it in the MCP task store
    * and delegating to a CRAFTER agent.
    */
-  const handleExecuteNoteTask = useCallback(async (noteId: string): Promise<CrafterAgent | null> => {
+  const handleExecuteQuickAccessNoteTask = useCallback(async (noteId: string): Promise<CrafterAgent | null> => {
     const note = notesHook.notes.find((n) => n.id === noteId);
     if (!note) return null;
 
@@ -1405,41 +1490,165 @@ export function SessionPageClient() {
     }
   }, [notesHook, workspaceId, sessionId, callMcpTool, activeCrafterId, concurrency]);
 
+  const handleExecuteProviderNoteTask = useCallback(async (noteId: string): Promise<CrafterAgent | null> => {
+    const note = notesHook.notes.find((n) => n.id === noteId);
+    if (!note) return null;
+
+    const existingMetadata = note.metadata ?? {};
+    const { provider, model, baseUrl, apiKey } = resolveAgentConfig("CRAFTER");
+    const branch = repoSelection?.branch || undefined;
+    const cwd = repoSelection?.path ?? undefined;
+    const promptText = [note.title.trim(), note.content?.trim()].filter(Boolean).join("\n\n");
+
+    await notesHook.updateNote(noteId, {
+      metadata: { ...existingMetadata, taskStatus: "IN_PROGRESS" },
+    });
+
+    const providerClient = new BrowserAcpClient(getDesktopApiBaseUrl());
+    let childSessionId: string | null = null;
+    let crafterAgentId: string | null = null;
+
+    try {
+      await providerClient.initialize();
+
+      const sessionResult = await providerClient.newSession({
+        cwd,
+        branch,
+        name: note.title,
+        provider,
+        role: "CRAFTER",
+        workspaceId,
+        model,
+        parentSessionId: sessionId,
+        baseUrl,
+        apiKey,
+      });
+
+      childSessionId = sessionResult.sessionId;
+      crafterAgentId = sessionResult.routaAgentId ?? sessionResult.sessionId;
+
+      const crafterAgent: CrafterAgent = {
+        id: crafterAgentId,
+        sessionId: childSessionId,
+        taskId: noteId,
+        taskTitle: note.title,
+        status: "running",
+        messages: [],
+      };
+
+      setCrafterAgents((prev) => [...prev, crafterAgent]);
+      setActiveCrafterId(crafterAgent.id);
+      setFocusedSessionId(childSessionId);
+      bumpRefresh();
+
+      const promptResult = await providerClient.prompt(childSessionId, promptText || note.title);
+      const finalContent = promptResult.content?.trim();
+
+      setCrafterAgents((prev) => prev.map((agent) => {
+        if (agent.id !== crafterAgent.id) return agent;
+        return {
+          ...agent,
+          status: "completed",
+          messages: finalContent
+            ? [{
+                id: crypto.randomUUID(),
+                role: "assistant",
+                content: finalContent,
+                timestamp: new Date(),
+              }]
+            : agent.messages,
+        };
+      }));
+
+      await notesHook.updateNote(noteId, {
+        metadata: {
+          ...existingMetadata,
+          taskStatus: "COMPLETED",
+          childSessionId,
+          provider,
+        },
+      });
+
+      return {
+        id: crafterAgent.id,
+        sessionId: childSessionId,
+        taskId: noteId,
+        taskTitle: note.title,
+        status: "completed",
+        messages: finalContent
+          ? [{
+              id: crypto.randomUUID(),
+              role: "assistant",
+              content: finalContent,
+              timestamp: new Date(),
+            }]
+          : [],
+      };
+    } catch (err) {
+      if (shouldSuppressTeardownError(err)) {
+        return null;
+      }
+
+      console.error("[CollabEditor] Provider note task execution failed:", err);
+      const errorMessage = err instanceof Error ? err.message : String(err);
+
+      if (crafterAgentId && childSessionId) {
+        setCrafterAgents((prev) => prev.map((agent) => {
+          if (agent.id !== crafterAgentId) return agent;
+          return {
+            ...agent,
+            status: "error",
+            messages: [{
+              id: crypto.randomUUID(),
+              role: "info",
+              content: `Execution failed: ${errorMessage}`,
+              timestamp: new Date(),
+            }],
+          };
+        }));
+      }
+
+      await notesHook.updateNote(noteId, {
+        metadata: {
+          ...existingMetadata,
+          taskStatus: "FAILED",
+          ...(childSessionId ? { childSessionId } : {}),
+          provider,
+        },
+      });
+
+      return null;
+    }
+  }, [bumpRefresh, notesHook, repoSelection, resolveAgentConfig, sessionId, workspaceId]);
+
+  const handleExecuteSelectedNoteTasks = useCallback(async (noteIds: string[], requestedConcurrency: number) => {
+    const pendingNoteIds = noteIds.filter((noteId) => {
+      const note = notesHook.notes.find((item) => item.id === noteId);
+      return Boolean(note && (!note.metadata.taskStatus || note.metadata.taskStatus === "PENDING"));
+    });
+    if (!pendingNoteIds.length) return;
+
+    const effectiveConcurrency = Math.max(1, Math.min(requestedConcurrency, pendingNoteIds.length));
+    const queue = [...pendingNoteIds];
+
+    while (queue.length > 0) {
+      const batch = queue.splice(0, effectiveConcurrency);
+      await Promise.allSettled(batch.map((noteId) => handleExecuteProviderNoteTask(noteId)));
+    }
+  }, [handleExecuteProviderNoteTask, notesHook.notes]);
+
   /**
    * Execute all pending collaborative task notes with configurable concurrency.
    */
   const handleExecuteAllNoteTasks = useCallback(async (requestedConcurrency: number) => {
-    const pendingNotes = notesHook.notes.filter(
-      (n) => n.metadata.type === "task" && (!n.metadata.taskStatus || n.metadata.taskStatus === "PENDING")
-    );
-    if (pendingNotes.length === 0) return;
-
-    const effectiveConcurrency = Math.min(requestedConcurrency, pendingNotes.length);
-
-    if (effectiveConcurrency <= 1) {
-      // Sequential: dispatch only the first task; queue the rest.
-      // The completion-watching effect will pop and dispatch subsequent tasks.
-      noteTaskQueueRef.current = pendingNotes.slice(1).map((n) => n.id);
-      const agent = await handleExecuteNoteTask(pendingNotes[0].id);
-      if (agent) setActiveCrafterId(agent.id);
-    } else {
-      noteTaskQueueRef.current = [];
-      const queue = [...pendingNotes];
-      while (queue.length > 0) {
-        const batch = queue.splice(0, effectiveConcurrency);
-        const results = await Promise.allSettled(batch.map((n) => handleExecuteNoteTask(n.id)));
-        for (const result of results) {
-          if (result.status === "fulfilled" && result.value) {
-            setActiveCrafterId(result.value.id);
-            break;
-          }
-        }
-      }
-    }
-  }, [notesHook, handleExecuteNoteTask]);
+    const pendingNoteIds = notesHook.notes
+      .filter((n) => n.metadata.type === "task" && (!n.metadata.taskStatus || n.metadata.taskStatus === "PENDING"))
+      .map((n) => n.id);
+    await handleExecuteSelectedNoteTasks(pendingNoteIds, requestedConcurrency);
+  }, [handleExecuteSelectedNoteTasks, notesHook.notes]);
 
   // Keep refs up to date so the queue-advance effect always calls the latest version
-  useEffect(() => { handleExecuteNoteTaskRef.current = handleExecuteNoteTask; }, [handleExecuteNoteTask]);
+  useEffect(() => { handleExecuteNoteTaskRef.current = handleExecuteQuickAccessNoteTask; }, [handleExecuteQuickAccessNoteTask]);
   useEffect(() => { handleExecuteTaskRef.current = handleExecuteTask; }, [handleExecuteTask]);
 
   // Notes are now pre-filtered by useNotes(workspaceId, sessionId)
@@ -1577,6 +1786,7 @@ export function SessionPageClient() {
           showMobileSidebar={showMobileSidebar}
           onResizeStart={handleLeftResizeStart}
           sessionId={sessionId}
+          focusedSessionId={focusedSessionId}
           workspaceId={workspaceId}
           refreshKey={refreshKey}
           onSelectSession={handleSelectSession}
@@ -1598,11 +1808,10 @@ export function SessionPageClient() {
           notesConnected={notesHook.connected}
           onUpdateNote={notesHook.updateNote}
           onDeleteNote={notesHook.deleteNote}
-          onExecuteNoteTask={handleExecuteNoteTask}
+          onExecuteNoteTask={handleExecuteProviderNoteTask}
+          onExecuteQuickAccessNoteTask={handleExecuteQuickAccessNoteTask}
           onExecuteAllNoteTasks={handleExecuteAllNoteTasks}
-          installAgentsButtonRef={installAgentsButtonRef}
-          onShowAgentInstall={() => setShowAgentInstallPopup(true)}
-          onShowSettings={() => setShowSettingsPanel(true)}
+          onExecuteSelectedNoteTasks={handleExecuteSelectedNoteTasks}
         />
 
         {/* ─── Chat Area ──────────────────────────────────────────── */}

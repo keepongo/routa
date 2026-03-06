@@ -19,6 +19,7 @@ export async function GET(
 ) {
   const { sessionId } = await params;
   const store = getHttpSessionStore();
+  await store.hydrateFromDb();
   const session = store.getSession(sessionId);
 
   if (!session) {

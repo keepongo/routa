@@ -121,9 +121,13 @@ export class BrowserAcpClient {
     cwd?: string;
     /** Git branch to scope the session to (optional) */
     branch?: string;
+    /** Optional display name for the session */
+    name?: string;
     provider?: string;
     modeId?: string;
     role?: string;
+    /** Parent session ID when creating a child session */
+    parentSessionId?: string;
     crafterProvider?: string;
     gateProvider?: string;
     mcpServers?: Array<{ name: string; url?: string }>;
@@ -143,9 +147,11 @@ export class BrowserAcpClient {
     const result = await this.rpc<AcpNewSessionResult>("session/new", {
       cwd: params.cwd,
       branch: params.branch,
+      name: params.name,
       provider: params.provider ?? "opencode",
       modeId: params.modeId,
       role: params.role,
+      parentSessionId: params.parentSessionId,
       crafterProvider: params.crafterProvider,
       gateProvider: params.gateProvider,
       mcpServers: params.mcpServers ?? [],

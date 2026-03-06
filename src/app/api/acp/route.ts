@@ -238,6 +238,7 @@ export async function POST(request: NextRequest) {
       const p = (params ?? {}) as Record<string, unknown>;
       const cwd = (p.cwd as string | undefined) ?? process.cwd();
       const branch = (p.branch as string | undefined) || undefined;
+      const name = (p.name as string | undefined)?.trim() || undefined;
 
       // Determine default provider based on environment
       const defaultProvider = isServerlessEnvironment() ? "claude-code-sdk" : "opencode";
@@ -245,6 +246,7 @@ export async function POST(request: NextRequest) {
 
       const modeId = (p.modeId as string | undefined) ?? (p.mode as string | undefined);
       const role = (p.role as string | undefined)?.toUpperCase();
+      const parentSessionId = (p.parentSessionId as string | undefined) || undefined;
       const model = (p.model as string | undefined);
       const specialistId = (p.specialistId as string | undefined);
       const baseUrl = (p.baseUrl as string | undefined);
@@ -326,11 +328,13 @@ export async function POST(request: NextRequest) {
       const now = new Date();
       store.upsertSession({
         sessionId,
+        name,
         cwd,
         branch,
         workspaceId,
         provider,
         role: role ?? "CRAFTER",
+        parentSessionId,
         modeId,
         model,
         specialistId: specialistId ?? undefined,
@@ -536,12 +540,14 @@ export async function POST(request: NextRequest) {
           // ── Update session record with ACP details ─────────────────────
           store.upsertSession({
             sessionId,
+            name,
             cwd,
             branch,
             workspaceId,
             routaAgentId: routaAgentId ?? acpSessionId,
             provider,
             role: role ?? "CRAFTER",
+            parentSessionId,
             modeId,
             model,
             specialistId: specialistId ?? undefined,
@@ -556,12 +562,14 @@ export async function POST(request: NextRequest) {
           // ── Persist to DB (fire-and-forget) ────────────────────────────
           persistSessionToDb({
             id: sessionId,
+            name,
             cwd,
             branch,
             workspaceId,
             routaAgentId: routaAgentId ?? acpSessionId,
             provider,
             role: role ?? "CRAFTER",
+            parentSessionId,
             modeId,
             model,
           }).catch((err) =>

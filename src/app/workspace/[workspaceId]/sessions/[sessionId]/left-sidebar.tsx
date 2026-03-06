@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useMemo, useRef, useEffect, useCallback } from "react";
+import React, { useState, useMemo, useRef, useEffect } from "react";
 import {SessionContextPanel} from "@/client/components/session-context-panel";
 import {type CrafterAgent, TaskPanel} from "@/client/components/task-panel";
 import {CollaborativeTaskEditor} from "@/client/components/collaborative-task-editor";
@@ -23,6 +23,7 @@ interface LeftSidebarProps {
 
   // Session & workspace
   sessionId: string;
+  focusedSessionId?: string | null;
   workspaceId: string;
   refreshKey: number;
   onSelectSession: (sessionId: string) => void;
@@ -53,7 +54,9 @@ interface LeftSidebarProps {
   onUpdateNote: (noteId: string, update: { title?: string; content?: string; metadata?: Record<string, unknown> }) => Promise<NoteData | null>;
   onDeleteNote: (noteId: string) => Promise<void>;
   onExecuteNoteTask: (noteId: string) => Promise<CrafterAgent | null>;
+  onExecuteQuickAccessNoteTask: (noteId: string) => Promise<CrafterAgent | null>;
   onExecuteAllNoteTasks: (concurrency: number) => Promise<void>;
+  onExecuteSelectedNoteTasks: (noteIds: string[], concurrency: number) => Promise<void>;
 }
 
 /* ─── Spec Viewer (inline in sidebar) ──────────────────────────────── */
@@ -177,163 +180,10 @@ function TaskSnapshotSummary({
   );
 }
 
-/* ─── Tasks Drawer (full-screen overlay for maximum space) ─────────── */
-function TasksDrawer({
-  open,
-  onClose,
-  hasCollabNotes,
-  sessionNotes,
-  notesConnected,
-  onUpdateNote,
-  onDeleteNote,
-  onExecuteNoteTask,
-  onExecuteAllNoteTasks,
-  routaTasks,
-  onConfirmAllTasks,
-  onExecuteAllTasks,
-  onConfirmTask,
-  onEditTask,
-  onExecuteTask,
-  concurrency,
-  onConcurrencyChange,
-  workspaceId,
-}: {
-  open: boolean;
-  onClose: () => void;
-  hasCollabNotes: boolean;
-  sessionNotes: NoteData[];
-  notesConnected: boolean;
-  onUpdateNote: (noteId: string, update: { title?: string; content?: string; metadata?: Record<string, unknown> }) => Promise<NoteData | null>;
-  onDeleteNote: (noteId: string) => Promise<void>;
-  onExecuteNoteTask: (noteId: string) => Promise<CrafterAgent | null>;
-  onExecuteAllNoteTasks: (concurrency: number) => Promise<void>;
-  routaTasks: ParsedTask[];
-  onConfirmAllTasks: () => void;
-  onExecuteAllTasks: (concurrency: number) => void;
-  onConfirmTask: (taskId: string) => void;
-  onEditTask: (taskId: string, updated: Partial<ParsedTask>) => void;
-  onExecuteTask: (taskId: string) => Promise<CrafterAgent | null>;
-  concurrency: number;
-  onConcurrencyChange: (n: number) => void;
-  workspaceId: string;
-}) {
-  const [drawerWidth, setDrawerWidth] = useState(600);
-  const isResizingRef = useRef(false);
-  const startXRef = useRef(0);
-  const startWidthRef = useRef(0);
-
-  const handleResizeStart = useCallback((e: React.MouseEvent) => {
-    e.preventDefault();
-    isResizingRef.current = true;
-    startXRef.current = e.clientX;
-    startWidthRef.current = drawerWidth;
-
-    const handleMouseMove = (ev: MouseEvent) => {
-      if (!isResizingRef.current) return;
-      const delta = startXRef.current - ev.clientX;
-      setDrawerWidth(Math.max(420, Math.min(1000, startWidthRef.current + delta)));
-    };
-    const handleMouseUp = () => {
-      isResizingRef.current = false;
-      document.removeEventListener("mousemove", handleMouseMove);
-      document.removeEventListener("mouseup", handleMouseUp);
-      document.body.style.userSelect = "";
-      document.body.style.cursor = "";
-    };
-    document.addEventListener("mousemove", handleMouseMove);
-    document.addEventListener("mouseup", handleMouseUp);
-    document.body.style.userSelect = "none";
-    document.body.style.cursor = "col-resize";
-  }, [drawerWidth]);
-
-  useEffect(() => {
-    if (!open) return;
-    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
-  }, [open, onClose]);
-
-  if (!open) return null;
-
-  const taskCount = hasCollabNotes
-    ? sessionNotes.filter((n) => n.metadata.type === "task").length
-    : routaTasks.length;
-  const isMobileViewport = typeof window !== "undefined" && window.innerWidth < 768;
-
-  return (
-    <>
-      <div className="fixed inset-0 z-40 bg-black/20 backdrop-blur-[1px]" onClick={onClose} aria-hidden="true" />
-      <div
-        className={`fixed top-13 bottom-0 right-0 z-50 flex flex-col bg-white dark:bg-[#13151d] border-l border-gray-200 dark:border-gray-800 shadow-2xl ${
-          isMobileViewport ? "left-0 border-l-0" : ""
-        }`}
-        style={isMobileViewport ? undefined : { width: `${drawerWidth}px` }}
-        role="dialog"
-        aria-modal="true"
-        aria-label="Tasks"
-      >
-        {!isMobileViewport && (
-          <div
-            className="absolute left-0 top-0 bottom-0 w-1.5 cursor-col-resize hover:bg-indigo-500/40 active:bg-indigo-500/60 transition-colors z-10"
-            onMouseDown={handleResizeStart}
-          />
-        )}
-        <div className="h-10 px-4 border-b border-gray-100 dark:border-gray-800 flex items-center justify-between shrink-0">
-          <div className="flex items-center gap-2">
-            <svg className="w-3.5 h-3.5 text-emerald-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
-            </svg>
-            <span className="text-sm font-semibold text-gray-900 dark:text-gray-100">Tasks</span>
-            {taskCount > 0 && (
-              <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-900/40 text-emerald-600 dark:text-emerald-300">
-                {taskCount}
-              </span>
-            )}
-          </div>
-          <button
-            onClick={onClose}
-            className="p-1.5 rounded-md text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
-            title="Close (Esc)"
-          >
-            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-            </svg>
-          </button>
-        </div>
-        <div className="flex-1 min-h-0 overflow-hidden">
-          {hasCollabNotes ? (
-            <CollaborativeTaskEditor
-              notes={sessionNotes}
-              connected={notesConnected}
-              onUpdateNote={onUpdateNote}
-              onDeleteNote={onDeleteNote}
-              workspaceId={workspaceId}
-              onExecuteTask={onExecuteNoteTask}
-              onExecuteAll={onExecuteAllNoteTasks}
-              concurrency={concurrency}
-              onConcurrencyChange={onConcurrencyChange}
-            />
-          ) : (
-            <TaskPanel
-              tasks={routaTasks}
-              onConfirmAll={onConfirmAllTasks}
-              onExecuteAll={onExecuteAllTasks}
-              onConfirmTask={onConfirmTask}
-              onEditTask={onEditTask}
-              onExecuteTask={onExecuteTask}
-              concurrency={concurrency}
-              onConcurrencyChange={onConcurrencyChange}
-            />
-          )}
-        </div>
-      </div>
-    </>
-  );
-}
-
 /* ─── Sessions + Tasks split pane (resizable, 50/50 default) ───────── */
 function SessionsSplitPane({
   sessionId,
+  focusedSessionId,
   workspaceId,
   onSelectSession,
   refreshKey,
@@ -343,11 +193,12 @@ function SessionsSplitPane({
   specNote,
   onSwitchToTasks,
   onSwitchToSpec,
-  onExecuteNoteTask,
+  onExecuteQuickAccessNoteTask,
   onExecuteTask,
   hasSpec,
 }: {
   sessionId: string;
+  focusedSessionId?: string | null;
   workspaceId: string;
   onSelectSession: (id: string) => void;
   refreshKey: number;
@@ -357,12 +208,12 @@ function SessionsSplitPane({
   specNote?: NoteData;
   onSwitchToTasks: () => void;
   onSwitchToSpec?: () => void;
-  onExecuteNoteTask: (noteId: string) => Promise<CrafterAgent | null>;
+  onExecuteQuickAccessNoteTask: (noteId: string) => Promise<CrafterAgent | null>;
   onExecuteTask: (taskId: string) => Promise<CrafterAgent | null>;
   hasSpec: boolean;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
-  const [splitRatio, setSplitRatio] = useState(0.62);
+  const [splitRatio, setSplitRatio] = useState(0.46);
   const [isDraggingSplit, setIsDraggingSplit] = useState(false);
   const hasTasks = hasCollabNotes
     ? sessionNotes.some((n) => n.metadata.type === "task")
@@ -387,7 +238,7 @@ function SessionsSplitPane({
     const stored = window.localStorage.getItem(SESSIONS_QUICK_ACCESS_RATIO_KEY);
     const parsed = stored ? Number.parseFloat(stored) : Number.NaN;
     if (Number.isFinite(parsed)) {
-      setSplitRatio(Math.max(0.35, Math.min(0.82, parsed)));
+      setSplitRatio(Math.max(0.28, Math.min(0.78, parsed)));
     }
   }, []);
 
@@ -405,7 +256,7 @@ function SessionsSplitPane({
       const rect = container.getBoundingClientRect();
       const relativeY = event.clientY - rect.top;
       const nextRatio = relativeY / rect.height;
-      setSplitRatio(Math.max(0.35, Math.min(0.82, nextRatio)));
+      setSplitRatio(Math.max(0.28, Math.min(0.78, nextRatio)));
     };
 
     const handleMouseUp = () => {
@@ -437,6 +288,7 @@ function SessionsSplitPane({
           sessionId={sessionId}
           workspaceId={workspaceId}
           onSelectSession={onSelectSession}
+          focusedSessionId={focusedSessionId}
           refreshTrigger={refreshKey}
         />
       </div>
@@ -467,7 +319,7 @@ function SessionsSplitPane({
                 hasCollabNotes={hasCollabNotes}
                 sessionNotes={sessionNotes}
                 routaTasks={routaTasks}
-                onExecuteNoteTask={onExecuteNoteTask}
+                onExecuteNoteTask={onExecuteQuickAccessNoteTask}
                 onExecuteTask={onExecuteTask}
               />
             </div>
@@ -650,6 +502,7 @@ export function LeftSidebar({
   showMobileSidebar,
   onResizeStart,
   sessionId,
+  focusedSessionId,
   workspaceId,
   refreshKey,
   onSelectSession,
@@ -673,10 +526,11 @@ export function LeftSidebar({
   onDeleteNote,
   onExecuteNoteTask,
   onExecuteAllNoteTasks,
+  onExecuteQuickAccessNoteTask,
+  onExecuteSelectedNoteTasks,
 }: LeftSidebarProps) {
   const canCreateSession = hasProviders && hasSelectedProvider;
   const [activeTab, setActiveTab] = useState<SidebarTab>("sessions");
-  const [showTasksDrawer, setShowTasksDrawer] = useState(false);
   const isDesktopCollapsed = isCollapsed && !showMobileSidebar;
 
   const taskCount = hasCollabNotes
@@ -849,18 +703,6 @@ export function LeftSidebar({
                   </svg>
                 }
               />
-              {/* Pop-out button for tasks — opens drawer for more space */}
-              {!showMobileSidebar && activeTab === "tasks" && taskCount > 0 && (
-                <button
-                  onClick={() => setShowTasksDrawer(true)}
-                  className="ml-auto p-1 rounded-md text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors mb-0.5"
-                  title="Pop out to drawer for more space"
-                >
-                  <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
-                  </svg>
-                </button>
-              )}
             </div>
 
             {/* Tab content — full remaining height */}
@@ -868,6 +710,7 @@ export function LeftSidebar({
               {activeTab === "sessions" && (
                 <SessionsSplitPane
                   sessionId={sessionId}
+                  focusedSessionId={focusedSessionId}
                   workspaceId={workspaceId}
                   onSelectSession={(id: string) => {
                     onSelectSession(id);
@@ -880,7 +723,7 @@ export function LeftSidebar({
                   specNote={specNote}
                   onSwitchToTasks={() => setActiveTab("tasks")}
                   onSwitchToSpec={() => setActiveTab("spec")}
-                  onExecuteNoteTask={onExecuteNoteTask}
+                  onExecuteQuickAccessNoteTask={onExecuteQuickAccessNoteTask}
                   onExecuteTask={onExecuteTask}
                   hasSpec={Boolean(specNote)}
                 />
@@ -900,6 +743,7 @@ export function LeftSidebar({
                       onDeleteNote={onDeleteNote}
                       workspaceId={workspaceId}
                       onExecuteTask={onExecuteNoteTask}
+                      onExecuteSelected={onExecuteSelectedNoteTasks}
                       onExecuteAll={onExecuteAllNoteTasks}
                       concurrency={concurrency}
                       onConcurrencyChange={onConcurrencyChange}
@@ -928,28 +772,6 @@ export function LeftSidebar({
           <div className="resize-indicator" />
         </div>
       </aside>
-
-      {/* Tasks Drawer — pop-out for maximum space */}
-      <TasksDrawer
-        open={showTasksDrawer}
-        onClose={() => setShowTasksDrawer(false)}
-        hasCollabNotes={hasCollabNotes}
-        sessionNotes={sessionNotes}
-        notesConnected={notesConnected}
-        onUpdateNote={onUpdateNote}
-        onDeleteNote={onDeleteNote}
-        onExecuteNoteTask={onExecuteNoteTask}
-        onExecuteAllNoteTasks={onExecuteAllNoteTasks}
-        routaTasks={routaTasks}
-        onConfirmAllTasks={onConfirmAllTasks}
-        onExecuteAllTasks={onExecuteAllTasks}
-        onConfirmTask={onConfirmTask}
-        onEditTask={onEditTask}
-        onExecuteTask={onExecuteTask}
-        concurrency={concurrency}
-        onConcurrencyChange={onConcurrencyChange}
-        workspaceId={workspaceId}
-      />
     </>
   );
 }

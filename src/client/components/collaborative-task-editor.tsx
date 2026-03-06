@@ -41,6 +41,8 @@ interface CollaborativeTaskEditorProps {
   onSelectCrafter?: (agentId: string) => void;
   /** Execute a single task note */
   onExecuteTask?: (noteId: string) => Promise<unknown>;
+  /** Execute a selected subset of task notes */
+  onExecuteSelected?: (noteIds: string[], concurrency: number) => Promise<void>;
   /** Execute all pending task notes */
   onExecuteAll?: (concurrency: number) => void;
   /** Current concurrency setting */
@@ -61,6 +63,7 @@ export function CollaborativeTaskEditor({
   activeCrafterId,
   onSelectCrafter,
   onExecuteTask,
+  onExecuteSelected,
   onExecuteAll,
   concurrency = 1,
   onConcurrencyChange,
@@ -120,11 +123,10 @@ export function CollaborativeTaskEditor({
   };
 
   const handleExecuteSelected = async () => {
-    if (!onExecuteAll) return;
+    if (!onExecuteSelected) return;
     const ids = Array.from(selectedNoteIds);
     setSelectedNoteIds(new Set());
-    // Use the concurrency-aware execution path
-    onExecuteAll(concurrency);
+    await onExecuteSelected(ids, concurrency);
   };
 
   return (
@@ -156,7 +158,7 @@ export function CollaborativeTaskEditor({
                 {selectedNoteIds.size === pendingNotes.length ? "Deselect All" : "Select All"}
               </button>
             )}
-            {selectedNoteIds.size > 0 && !hasRunning && onExecuteTask && (
+            {selectedNoteIds.size > 0 && !hasRunning && onExecuteSelected && (
               <button
                 onClick={handleExecuteSelected}
                 className="text-xs font-medium px-2.5 py-1 rounded-md bg-blue-600 text-white hover:bg-blue-700 transition-colors"
@@ -492,10 +494,10 @@ function TaskNoteCard({
 
   const statusIcon = {
     PENDING: (
-      <div className="w-5 h-5 rounded-md border-2 border-gray-300 dark:border-gray-600 flex-shrink-0" />
+      <div className="w-5 h-5 rounded-md border-2 border-gray-300 dark:border-gray-600 shrink-0" />
     ),
     IN_PROGRESS: (
-      <div className="w-5 h-5 rounded-md bg-amber-500 flex items-center justify-center flex-shrink-0 animate-pulse">
+      <div className="w-5 h-5 rounded-md bg-amber-500 flex items-center justify-center shrink-0 animate-pulse">
         <svg
           className="w-3 h-3 text-white"
           fill="none"
@@ -512,7 +514,7 @@ function TaskNoteCard({
       </div>
     ),
     COMPLETED: (
-      <div className="w-5 h-5 rounded-md bg-green-500 flex items-center justify-center flex-shrink-0">
+      <div className="w-5 h-5 rounded-md bg-green-500 flex items-center justify-center shrink-0">
         <svg
           className="w-3 h-3 text-white"
           fill="none"
@@ -529,7 +531,7 @@ function TaskNoteCard({
       </div>
     ),
     FAILED: (
-      <div className="w-5 h-5 rounded-md bg-red-500 flex items-center justify-center flex-shrink-0">
+      <div className="w-5 h-5 rounded-md bg-red-500 flex items-center justify-center shrink-0">
         <svg
           className="w-3 h-3 text-white"
           fill="none"
@@ -551,12 +553,12 @@ function TaskNoteCard({
     <div className={`rounded-lg border transition-all ${statusInfo.bg}`}>
       {/* Header */}
       <div
-        className="flex items-start gap-2.5 px-3 py-2.5 cursor-pointer hover:bg-black/[0.02] dark:hover:bg-white/[0.02] transition-colors"
+        className="flex items-start gap-2.5 px-3 py-2.5 cursor-pointer hover:bg-black/2 dark:hover:bg-white/2 transition-colors"
         onClick={onToggleExpand}
       >
         {onToggleSelect && status === "PENDING" ? (
           <label
-            className="flex-shrink-0 cursor-pointer"
+            className="shrink-0 cursor-pointer"
             onClick={(e) => e.stopPropagation()}
           >
             <input
@@ -614,7 +616,7 @@ function TaskNoteCard({
               onDelete();
             }}
             title="Delete task"
-            className="p-0.5 rounded text-gray-300 dark:text-gray-600 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors flex-shrink-0"
+            className="p-0.5 rounded text-gray-300 dark:text-gray-600 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors shrink-0"
           >
             <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
@@ -622,7 +624,7 @@ function TaskNoteCard({
           </button>
         )}
         <svg
-          className={`w-4 h-4 text-gray-400 transition-transform flex-shrink-0 mt-0.5 ${
+          className={`w-4 h-4 text-gray-400 transition-transform shrink-0 mt-0.5 ${
             expanded ? "rotate-180" : ""
           }`}
           fill="none"

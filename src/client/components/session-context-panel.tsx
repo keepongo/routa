@@ -27,6 +27,7 @@ interface SessionContextPanelProps {
   sessionId: string;
   workspaceId: string;
   onSelectSession: (sessionId: string) => void;
+  focusedSessionId?: string | null;
   refreshTrigger?: number;
 }
 
@@ -34,6 +35,7 @@ export function SessionContextPanel({
   sessionId,
   workspaceId: _workspaceId,
   onSelectSession,
+  focusedSessionId,
   refreshTrigger = 0,
 }: SessionContextPanelProps) {
   const [context, setContext] = useState<SessionContext | null>(null);
@@ -162,6 +164,11 @@ export function SessionContextPanel({
   }
 
   const hasHierarchy = context.parent || context.children.length > 0 || context.siblings.length > 0;
+  const focusedSession = focusedSessionId
+    ? [context.current, context.parent, ...context.siblings, ...context.children]
+        .filter((session): session is SessionInfo => Boolean(session))
+        .find((session) => session.sessionId === focusedSessionId)
+    : undefined;
 
   /** Inline rename/delete actions for a session row */
   const SessionActions = ({ sid, displayName }: { sid: string; displayName: string }) => (
@@ -203,21 +210,24 @@ export function SessionContextPanel({
     icon,
     iconColor = "text-gray-400",
     indent = false,
+    highlighted = false,
   }: {
     session: SessionInfo;
     label?: string;
     icon: React.ReactNode;
     iconColor?: string;
     indent?: boolean;
+    highlighted?: boolean;
   }) => {
     const displayName = session.name ?? getDefaultName(session);
     const isRenaming = renamingId === session.sessionId;
+    const isChildSession = Boolean(session.parentSessionId);
 
     return (
       <div className={indent ? "ml-5" : ""}>
         <div
           onClick={() => !isRenaming && onSelectSession(session.sessionId)}
-          className="group flex items-start gap-2 px-2 py-1.5 rounded-md hover:bg-gray-100 dark:hover:bg-gray-800 cursor-pointer transition-colors"
+          className={`group flex items-start gap-2 px-2 py-1.5 rounded-md cursor-pointer transition-colors ${highlighted ? "bg-amber-50 ring-1 ring-amber-200 hover:bg-amber-100 dark:bg-amber-900/20 dark:ring-amber-800 dark:hover:bg-amber-900/30" : "hover:bg-gray-100 dark:hover:bg-gray-800"}`}
         >
           <span className={`shrink-0 mt-0.5 ${iconColor}`}>{icon}</span>
           <div className="min-w-0 flex-1">
@@ -235,8 +245,20 @@ export function SessionContextPanel({
                 className="w-full text-[11px] font-medium bg-white dark:bg-gray-900 border border-blue-400 rounded px-1 py-0.5 outline-none text-gray-700 dark:text-gray-300"
               />
             ) : (
-              <div className="text-[11px] font-medium text-gray-700 dark:text-gray-300 truncate">
-                {displayName}
+              <div className="flex items-center gap-1.5 min-w-0">
+                <div className="text-[11px] font-medium text-gray-700 dark:text-gray-300 truncate">
+                  {displayName}
+                </div>
+                {isChildSession && (
+                  <span className="shrink-0 rounded-full bg-amber-100 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-amber-700 dark:bg-amber-900/30 dark:text-amber-300">
+                    Child
+                  </span>
+                )}
+                {highlighted && (
+                  <span className="shrink-0 rounded-full bg-blue-100 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-blue-700 dark:bg-blue-900/30 dark:text-blue-300">
+                    Focus
+                  </span>
+                )}
               </div>
             )}
             <div className="text-[10px] text-gray-400 dark:text-gray-500">
@@ -303,6 +325,11 @@ export function SessionContextPanel({
                   {context.current.role}
                 </span>
               )}
+              {focusedSession && focusedSession.sessionId !== context.current.sessionId && (
+                <span className="px-1.5 py-0.5 bg-amber-100 dark:bg-amber-900/30 rounded text-amber-700 dark:text-amber-300">
+                  Focus: {focusedSession.name ?? getDefaultName(focusedSession)}
+                </span>
+              )}
               {context.current.provider && (
                 <span className="text-blue-500 dark:text-blue-400">
                   {context.current.provider}
@@ -341,6 +368,7 @@ export function SessionContextPanel({
               <SessionRow
                 session={context.parent}
                 label="Parent"
+                highlighted={context.parent.sessionId === focusedSessionId}
                 icon={
                   <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                     <path strokeLinecap="round" strokeLinejoin="round" d="M5 10l7-7m0 0l7 7m-7-7v18" />
@@ -365,6 +393,7 @@ export function SessionContextPanel({
                     key={sibling.sessionId}
                     session={sibling}
                     indent
+                    highlighted={sibling.sessionId === focusedSessionId}
                     icon={
                       <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                         <path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
@@ -392,6 +421,7 @@ export function SessionContextPanel({
                     key={child.sessionId}
                     session={child}
                     indent
+                    highlighted={child.sessionId === focusedSessionId}
                     icon={
                       <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                         <path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
