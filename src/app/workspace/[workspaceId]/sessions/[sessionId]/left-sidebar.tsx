@@ -15,6 +15,7 @@ interface LeftSidebarProps {
   // Sidebar dimensions & collapse
   isCollapsed: boolean;
   onToggleCollapse: () => void;
+  onCloseMobileSidebar?: () => void;
   width: number;
   showMobileSidebar: boolean;
   onResizeStart: (e: React.MouseEvent) => void;
@@ -94,6 +95,59 @@ function SpecViewer({ specNote, onDeleteNote }: {
           content={specNote.content || "No spec content yet."}
           className="text-[12px] text-gray-700 dark:text-gray-300"
         />
+      </div>
+    </div>
+  );
+}
+
+function TaskSnapshotSummary({
+  taskCount,
+  runningCount,
+  hasSpec,
+  onOpenTasks,
+  onOpenSpec,
+}: {
+  taskCount: number;
+  runningCount: number;
+  hasSpec: boolean;
+  onOpenTasks: () => void;
+  onOpenSpec?: () => void;
+}) {
+  if (taskCount === 0 && !hasSpec) return null;
+
+  return (
+    <div className="border-t border-gray-100 dark:border-gray-800 bg-gray-50/80 dark:bg-[#171a23] shrink-0">
+      <div className="px-3 py-2 flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-gray-400 dark:text-gray-500">
+            Quick Access
+          </p>
+          <p className="mt-1 text-[12px] text-gray-600 dark:text-gray-300">
+            {taskCount > 0
+              ? `${taskCount} task${taskCount === 1 ? "" : "s"}${runningCount > 0 ? `, ${runningCount} running` : ""}`
+              : "Spec available for this session."}
+          </p>
+        </div>
+        <div className="flex items-center gap-1.5 shrink-0">
+          {hasSpec && onOpenSpec && (
+            <button
+              type="button"
+              onClick={onOpenSpec}
+              className="px-2 py-1 rounded-md text-[10px] font-medium text-blue-600 dark:text-blue-300 bg-blue-50 dark:bg-blue-900/20 hover:bg-blue-100 dark:hover:bg-blue-900/30 transition-colors"
+            >
+              Spec
+            </button>
+          )}
+          {taskCount > 0 && (
+            <button
+              type="button"
+              onClick={onOpenTasks}
+              className="px-2 py-1 rounded-md text-[10px] font-medium text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-900/20 hover:bg-emerald-100 dark:hover:bg-emerald-900/30 transition-colors"
+            >
+              Open Tasks
+            </button>
+          )}
+        </div>
       </div>
     </div>
   );
@@ -180,21 +234,26 @@ function TasksDrawer({
   const taskCount = hasCollabNotes
     ? sessionNotes.filter((n) => n.metadata.type === "task").length
     : routaTasks.length;
+  const isMobileViewport = typeof window !== "undefined" && window.innerWidth < 768;
 
   return (
     <>
       <div className="fixed inset-0 z-40 bg-black/20 backdrop-blur-[1px]" onClick={onClose} aria-hidden="true" />
       <div
-        className="fixed top-[52px] bottom-0 right-0 z-50 flex flex-col bg-white dark:bg-[#13151d] border-l border-gray-200 dark:border-gray-800 shadow-2xl"
-        style={{ width: `${drawerWidth}px` }}
+        className={`fixed top-13 bottom-0 right-0 z-50 flex flex-col bg-white dark:bg-[#13151d] border-l border-gray-200 dark:border-gray-800 shadow-2xl ${
+          isMobileViewport ? "left-0 border-l-0" : ""
+        }`}
+        style={isMobileViewport ? undefined : { width: `${drawerWidth}px` }}
         role="dialog"
         aria-modal="true"
         aria-label="Tasks"
       >
-        <div
-          className="absolute left-0 top-0 bottom-0 w-1.5 cursor-col-resize hover:bg-indigo-500/40 active:bg-indigo-500/60 transition-colors z-10"
-          onMouseDown={handleResizeStart}
-        />
+        {!isMobileViewport && (
+          <div
+            className="absolute left-0 top-0 bottom-0 w-1.5 cursor-col-resize hover:bg-indigo-500/40 active:bg-indigo-500/60 transition-colors z-10"
+            onMouseDown={handleResizeStart}
+          />
+        )}
         <div className="h-10 px-4 border-b border-gray-100 dark:border-gray-800 flex items-center justify-between shrink-0">
           <div className="flex items-center gap-2">
             <svg className="w-3.5 h-3.5 text-emerald-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -258,8 +317,8 @@ function SessionsSplitPane({
   sessionNotes,
   routaTasks,
   onSwitchToTasks,
-  onExecuteTask,
-  onMarkDone,
+  onSwitchToSpec,
+  hasSpec,
 }: {
   sessionId: string;
   workspaceId: string;
@@ -269,53 +328,22 @@ function SessionsSplitPane({
   sessionNotes: NoteData[];
   routaTasks: ParsedTask[];
   onSwitchToTasks: () => void;
-  onExecuteTask?: (id: string) => Promise<unknown>;
-  onMarkDone?: (id: string) => void;
+  onSwitchToSpec?: () => void;
+  hasSpec: boolean;
 }) {
-  const containerRef = useRef<HTMLDivElement>(null);
-  // splitRatio: fraction of height given to the top (sessions) pane, 0.2–0.8
-  const [splitRatio, setSplitRatio] = useState(0.5);
-  const isResizingRef = useRef(false);
-  const startYRef = useRef(0);
-  const startRatioRef = useRef(0.5);
-
   const hasTasks = hasCollabNotes
     ? sessionNotes.some((n) => n.metadata.type === "task")
     : routaTasks.length > 0;
-
-  const handleResizeStart = useCallback((e: React.MouseEvent) => {
-    e.preventDefault();
-    isResizingRef.current = true;
-    startYRef.current = e.clientY;
-    startRatioRef.current = splitRatio;
-
-    const handleMouseMove = (ev: MouseEvent) => {
-      if (!isResizingRef.current || !containerRef.current) return;
-      const containerH = containerRef.current.clientHeight;
-      const delta = ev.clientY - startYRef.current;
-      const newRatio = Math.min(0.8, Math.max(0.2, startRatioRef.current + delta / containerH));
-      setSplitRatio(newRatio);
-    };
-    const handleMouseUp = () => {
-      isResizingRef.current = false;
-      document.removeEventListener("mousemove", handleMouseMove);
-      document.removeEventListener("mouseup", handleMouseUp);
-      document.body.style.userSelect = "";
-      document.body.style.cursor = "";
-    };
-    document.addEventListener("mousemove", handleMouseMove);
-    document.addEventListener("mouseup", handleMouseUp);
-    document.body.style.userSelect = "none";
-    document.body.style.cursor = "row-resize";
-  }, [splitRatio]);
+  const taskCount = hasCollabNotes
+    ? sessionNotes.filter((n) => n.metadata.type === "task").length
+    : routaTasks.length;
+  const runningCount = hasCollabNotes
+    ? sessionNotes.filter((n) => n.metadata.taskStatus === "IN_PROGRESS").length
+    : routaTasks.filter((task) => task.status === "running").length;
 
   return (
-    <div ref={containerRef} className="flex-1 min-h-0 flex flex-col overflow-hidden">
-      {/* Top pane: Sessions */}
-      <div
-        className="min-h-0 overflow-y-auto"
-        style={{ height: hasTasks ? `${splitRatio * 100}%` : "100%" }}
-      >
+    <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
+      <div className="flex-1 min-h-0 overflow-y-auto">
         <SessionContextPanel
           sessionId={sessionId}
           workspaceId={workspaceId}
@@ -323,38 +351,32 @@ function SessionsSplitPane({
           refreshTrigger={refreshKey}
         />
       </div>
-
-      {/* Resize handle + bottom pane: only when tasks exist */}
-      {hasTasks && (
-        <>
-          {/* Drag handle */}
-          <div
-            className="h-1.5 shrink-0 cursor-row-resize flex items-center justify-center hover:bg-indigo-500/20 active:bg-indigo-500/40 transition-colors group"
-            onMouseDown={handleResizeStart}
-          >
-            <div className="w-8 h-0.5 rounded-full bg-gray-300 dark:bg-gray-600 group-hover:bg-indigo-400 transition-colors" />
-          </div>
-
-          {/* Bottom pane: Mini task list */}
-          <div className="min-h-0 flex flex-col overflow-hidden border-t border-gray-100 dark:border-gray-800"
-            style={{ height: `${(1 - splitRatio) * 100}%` }}
-          >
-            <MiniTaskList
-              hasCollabNotes={hasCollabNotes}
-              sessionNotes={sessionNotes}
-              routaTasks={routaTasks}
-              onSwitchToTasks={onSwitchToTasks}
-              onExecuteTask={onExecuteTask}
-              onMarkDone={onMarkDone}
-            />
-          </div>
-        </>
+      {(hasTasks || hasSpec) && (
+        <div className="shrink-0">
+          <TaskSnapshotSummary
+            taskCount={taskCount}
+            runningCount={runningCount}
+            hasSpec={hasSpec}
+            onOpenTasks={onSwitchToTasks}
+            onOpenSpec={onSwitchToSpec}
+          />
+          {hasTasks && (
+            <div className="border-t border-gray-100 dark:border-gray-800 bg-white dark:bg-[#13151d]">
+              <MiniTaskList
+                hasCollabNotes={hasCollabNotes}
+                sessionNotes={sessionNotes}
+                routaTasks={routaTasks}
+                onSwitchToTasks={onSwitchToTasks}
+              />
+            </div>
+          )}
+        </div>
       )}
     </div>
   );
 }
 
-/* ─── Mini Task List (resizable lower pane in Sessions tab) ─────────── */
+/* ─── Mini Task List (summary list in Sessions tab) ─────────────────── */
 const STATUS_COLORS: Record<string, string> = {
   pending:     "bg-gray-300 dark:bg-gray-600",
   confirmed:   "bg-blue-400 dark:bg-blue-500",
@@ -378,22 +400,12 @@ function MiniTaskList({
   sessionNotes,
   routaTasks,
   onSwitchToTasks,
-  onExecuteTask,
-  onMarkDone,
 }: {
   hasCollabNotes: boolean;
   sessionNotes: NoteData[];
   routaTasks: ParsedTask[];
   onSwitchToTasks: () => void;
-  onExecuteTask?: (id: string) => Promise<unknown>;
-  onMarkDone?: (id: string) => void;
 }) {
-  const [hoveredId, setHoveredId] = useState<string | null>(null);
-  const [popupPos, setPopupPos] = useState<{ top: number; left: number } | null>(null);
-  const containerRef = useRef<HTMLDivElement>(null);
-  const hoverTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const popupRef = useRef<HTMLDivElement>(null);
-
   const items = useMemo(() => {
     if (hasCollabNotes) {
       return sessionNotes
@@ -413,150 +425,71 @@ function MiniTaskList({
     }));
   }, [hasCollabNotes, sessionNotes, routaTasks]);
 
-  const handleRowEnter = useCallback((id: string, el: HTMLElement) => {
-    if (hoverTimerRef.current) clearTimeout(hoverTimerRef.current);
-    hoverTimerRef.current = setTimeout(() => {
-      const rect = el.getBoundingClientRect();
-      // Position popup to the right of the sidebar
-      setPopupPos({ top: rect.top, left: rect.right + 8 });
-      setHoveredId(id);
-    }, 200);
-  }, []);
-
-  const handleRowLeave = useCallback(() => {
-    if (hoverTimerRef.current) clearTimeout(hoverTimerRef.current);
-    hoverTimerRef.current = setTimeout(() => {
-      setHoveredId(null);
-      setPopupPos(null);
-    }, 150);
-  }, []);
-
-  const handlePopupEnter = useCallback(() => {
-    if (hoverTimerRef.current) clearTimeout(hoverTimerRef.current);
-  }, []);
-
-  const handlePopupLeave = useCallback(() => {
-    if (hoverTimerRef.current) clearTimeout(hoverTimerRef.current);
-    hoverTimerRef.current = setTimeout(() => {
-      setHoveredId(null);
-      setPopupPos(null);
-    }, 150);
-  }, []);
-
-  useEffect(() => {
-    return () => { if (hoverTimerRef.current) clearTimeout(hoverTimerRef.current); };
-  }, []);
-
   if (items.length === 0) return null;
 
-  const hoveredItem = items.find((i) => i.id === hoveredId) ?? null;
-
-  // Can run: pending or confirmed (not already running/completed)
-  const canRun = (status: string) =>
-    ["pending", "confirmed", "PENDING"].includes(status);
-  // Can mark done: running / in-progress
-  const canDone = (status: string) =>
-    ["running", "IN_PROGRESS"].includes(status);
+  const previewItems = items.slice(0, 3);
+  const runningCount = items.filter((item) => ["running", "IN_PROGRESS"].includes(item.status)).length;
+  const completedCount = items.filter((item) => ["completed", "COMPLETED"].includes(item.status)).length;
 
   return (
-    <div ref={containerRef} className="flex flex-col h-full min-h-0">
-      {/* Section header */}
-      <div className="px-3 py-1.5 flex items-center justify-between shrink-0 border-b border-gray-100 dark:border-gray-800">
-        <span className="text-[10px] font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500">
-          Tasks ({items.length})
-        </span>
+    <div className="px-3 py-2 space-y-2">
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center gap-1.5 flex-wrap">
+          <span className="text-[10px] font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500">
+            Task Snapshot
+          </span>
+          <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400">
+            {items.length} total
+          </span>
+          {runningCount > 0 && (
+            <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300">
+              {runningCount} running
+            </span>
+          )}
+          {completedCount > 0 && (
+            <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300">
+              {completedCount} done
+            </span>
+          )}
+        </div>
         <button
           onClick={onSwitchToTasks}
-          className="text-[10px] text-indigo-500 dark:text-indigo-400 hover:underline"
+          className="text-[10px] font-medium text-indigo-500 dark:text-indigo-400 hover:underline shrink-0"
         >
           view all →
         </button>
       </div>
-
-      {/* Task list — scrollable */}
-      <div className="flex-1 min-h-0 overflow-y-auto">
-        <div className="py-1 space-y-px">
-          {items.map((item) => {
-            const dotColor = STATUS_COLORS[item.status] ?? "bg-gray-300";
-            return (
-              <div
-                key={item.id}
-                onMouseEnter={(e) => handleRowEnter(item.id, e.currentTarget)}
-                onMouseLeave={handleRowLeave}
-                className={`flex items-center gap-2 px-3 py-1.5 transition-colors cursor-default ${
-                  hoveredId === item.id
-                    ? "bg-indigo-50 dark:bg-indigo-900/20"
-                    : "hover:bg-gray-50 dark:hover:bg-gray-800/60"
-                }`}
-              >
-                <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${dotColor}`} />
-                <span className="text-[11px] text-gray-700 dark:text-gray-300 truncate flex-1">
+      <div className="space-y-1.5">
+        {previewItems.map((item) => (
+          <button
+            key={item.id}
+            type="button"
+            onClick={onSwitchToTasks}
+            className="w-full text-left flex items-start gap-2 rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-[#171a23] px-2.5 py-2 hover:border-indigo-300 dark:hover:border-indigo-700 hover:bg-indigo-50/40 dark:hover:bg-indigo-900/10 transition-colors"
+          >
+            <span className={`mt-1 w-1.5 h-1.5 rounded-full shrink-0 ${STATUS_COLORS[item.status] ?? "bg-gray-300"}`} />
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center gap-2">
+                <span className="text-[11px] font-medium text-gray-700 dark:text-gray-200 truncate">
                   {item.title}
                 </span>
+                <span className="text-[9px] uppercase tracking-wider text-gray-400 dark:text-gray-500 shrink-0">
+                  {STATUS_LABEL[item.status] ?? item.status}
+                </span>
               </div>
-            );
-          })}
-        </div>
-      </div>
-
-      {/* Hover popup — portal-style fixed position to the right of sidebar */}
-      {hoveredItem && popupPos && (
-        <div
-          ref={popupRef}
-          onMouseEnter={handlePopupEnter}
-          onMouseLeave={handlePopupLeave}
-          className="fixed z-[60] w-72 rounded-lg bg-white dark:bg-[#1a1d2e] border border-gray-200 dark:border-gray-700 shadow-xl overflow-hidden"
-          style={{
-            top: `${Math.min(popupPos.top, window.innerHeight - 260)}px`,
-            left: `${popupPos.left}px`,
-          }}
-        >
-          {/* Popup header */}
-          <div className="px-3 py-2 border-b border-gray-100 dark:border-gray-800 flex items-center gap-2">
-            <span className={`w-2 h-2 rounded-full shrink-0 ${STATUS_COLORS[hoveredItem.status] ?? "bg-gray-300"}`} />
-            <span className="text-[11px] font-semibold text-gray-800 dark:text-gray-200 truncate flex-1">
-              {hoveredItem.title}
-            </span>
-            <span className="text-[9px] font-medium px-1.5 py-0.5 rounded-full bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-              {STATUS_LABEL[hoveredItem.status] ?? hoveredItem.status}
-            </span>
-          </div>
-
-          {/* Popup detail */}
-          <div className="px-3 py-2 max-h-40 overflow-y-auto">
-            <p className="text-[11px] text-gray-600 dark:text-gray-400 leading-relaxed whitespace-pre-wrap break-words">
-              {hoveredItem.detail || "No details."}
-            </p>
-          </div>
-
-          {/* Action buttons */}
-          {(canRun(hoveredItem.status) || canDone(hoveredItem.status)) && (
-            <div className="px-3 py-2 border-t border-gray-100 dark:border-gray-800 flex items-center gap-2">
-              {canRun(hoveredItem.status) && onExecuteTask && (
-                <button
-                  onClick={() => { onExecuteTask(hoveredItem.id); setHoveredId(null); setPopupPos(null); }}
-                  className="flex items-center gap-1 px-2.5 py-1 rounded-md text-[10px] font-medium text-white bg-indigo-500 hover:bg-indigo-600 transition-colors"
-                >
-                  <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
-                  </svg>
-                  Run
-                </button>
-              )}
-              {canDone(hoveredItem.status) && onMarkDone && (
-                <button
-                  onClick={() => { onMarkDone(hoveredItem.id); setHoveredId(null); setPopupPos(null); }}
-                  className="flex items-center gap-1 px-2.5 py-1 rounded-md text-[10px] font-medium text-white bg-emerald-500 hover:bg-emerald-600 transition-colors"
-                >
-                  <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                  </svg>
-                  Done
-                </button>
+              {item.detail && (
+                <p className="mt-1 text-[10px] text-gray-500 dark:text-gray-400 line-clamp-2">
+                  {item.detail}
+                </p>
               )}
             </div>
-          )}
-        </div>
+          </button>
+        ))}
+      </div>
+      {items.length > previewItems.length && (
+        <p className="text-[10px] text-gray-400 dark:text-gray-500">
+          +{items.length - previewItems.length} more task{items.length - previewItems.length === 1 ? "" : "s"}
+        </p>
       )}
     </div>
   );
@@ -601,6 +534,7 @@ function TabButton({ active, label, badge, badgePulse, icon, onClick }: {
 export function LeftSidebar({
   isCollapsed,
   onToggleCollapse,
+  onCloseMobileSidebar,
   width,
   showMobileSidebar,
   onResizeStart,
@@ -635,6 +569,7 @@ export function LeftSidebar({
   const canCreateSession = hasProviders && hasSelectedProvider;
   const [activeTab, setActiveTab] = useState<SidebarTab>("sessions");
   const [showTasksDrawer, setShowTasksDrawer] = useState(false);
+  const isDesktopCollapsed = isCollapsed && !showMobileSidebar;
 
   const taskCount = hasCollabNotes
     ? sessionNotes.filter((n) => n.metadata.type === "task").length
@@ -649,33 +584,15 @@ export function LeftSidebar({
     ? sessionNotes.some((n) => n.metadata.taskStatus === "IN_PROGRESS")
     : routaTasks.some((t) => t.status === "running");
 
-  // Auto-switch to tasks tab when tasks appear for the first time
-  const hasAutoSwitchedRef = useRef(false);
-  useEffect(() => {
-    if (taskCount > 0 && !hasAutoSwitchedRef.current) {
-      hasAutoSwitchedRef.current = true;
-      setActiveTab("tasks");
-    }
-  }, [taskCount]);
-
-  // Auto-switch to spec tab when spec appears
-  const hasAutoSwitchedSpecRef = useRef(false);
-  useEffect(() => {
-    if (specNote && !hasAutoSwitchedSpecRef.current) {
-      hasAutoSwitchedSpecRef.current = true;
-      setActiveTab("spec");
-    }
-  }, [specNote]);
-
   return (
     <>
       <aside
         className={`shrink-0 border-r border-gray-200 dark:border-gray-800 bg-white dark:bg-[#13151d] flex flex-col relative transition-[width] duration-200
-          ${showMobileSidebar ? "fixed inset-y-[52px] left-0 z-40 shadow-2xl overflow-y-auto" : "hidden md:flex overflow-hidden"}
+          ${showMobileSidebar ? "fixed inset-y-13 left-0 z-40 shadow-2xl overflow-hidden rounded-r-2xl" : "hidden md:flex overflow-hidden"}
         `}
-        style={{ width: isCollapsed ? "44px" : `${width}px` }}
+        style={{ width: isDesktopCollapsed ? "44px" : showMobileSidebar ? "min(360px, calc(100vw - 16px))" : `${width}px` }}
       >
-        {isCollapsed ? (
+        {isDesktopCollapsed ? (
           /* ─── Collapsed: icon strip ──────────────────────────── */
           <div className="flex flex-col items-center py-2 gap-1.5 h-full">
             <button
@@ -730,7 +647,7 @@ export function LeftSidebar({
 
             {/* New session */}
             <button
-              onClick={() => onCreateSession("")}
+              onClick={() => { onCreateSession(""); }}
               disabled={!canCreateSession}
               className="p-1.5 rounded-md text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
               title="New Session"
@@ -772,7 +689,10 @@ export function LeftSidebar({
               </div>
               <div className="flex items-center gap-0.5">
                 <button
-                  onClick={() => onCreateSession("")}
+                  onClick={() => {
+                    onCreateSession("");
+                    onCloseMobileSidebar?.();
+                  }}
                   disabled={!canCreateSession}
                   title="New Session"
                   className="p-1 rounded-md text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
@@ -782,9 +702,15 @@ export function LeftSidebar({
                   </svg>
                 </button>
                 <button
-                  onClick={onToggleCollapse}
+                  onClick={() => {
+                    if (showMobileSidebar) {
+                      onCloseMobileSidebar?.();
+                      return;
+                    }
+                    onToggleCollapse();
+                  }}
                   className="p-1 rounded-md hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
-                  title="Collapse sidebar"
+                  title={showMobileSidebar ? "Close sidebar" : "Collapse sidebar"}
                 >
                   <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                     <path strokeLinecap="round" strokeLinejoin="round" d="M11 19l-7-7 7-7M18 19l-7-7 7-7" />
@@ -830,7 +756,7 @@ export function LeftSidebar({
                 }
               />
               {/* Pop-out button for tasks — opens drawer for more space */}
-              {activeTab === "tasks" && taskCount > 0 && (
+              {!showMobileSidebar && activeTab === "tasks" && taskCount > 0 && (
                 <button
                   onClick={() => setShowTasksDrawer(true)}
                   className="ml-auto p-1 rounded-md text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors mb-0.5"
@@ -849,17 +775,17 @@ export function LeftSidebar({
                 <SessionsSplitPane
                   sessionId={sessionId}
                   workspaceId={workspaceId}
-                  onSelectSession={onSelectSession}
+                  onSelectSession={(id: string) => {
+                    onSelectSession(id);
+                    onCloseMobileSidebar?.();
+                  }}
                   refreshKey={refreshKey}
                   hasCollabNotes={hasCollabNotes}
                   sessionNotes={sessionNotes}
                   routaTasks={routaTasks}
                   onSwitchToTasks={() => setActiveTab("tasks")}
-                  onExecuteTask={hasCollabNotes ? onExecuteNoteTask : onExecuteTask}
-                  onMarkDone={hasCollabNotes
-                    ? (id: string) => { onUpdateNote(id, { metadata: { taskStatus: "COMPLETED" } }); }
-                    : (id: string) => { onEditTask(id, { status: "completed" } as Partial<ParsedTask>); }
-                  }
+                  onSwitchToSpec={specNote ? () => setActiveTab("spec") : undefined}
+                  hasSpec={Boolean(specNote)}
                 />
               )}
 
@@ -901,7 +827,10 @@ export function LeftSidebar({
             <div className="p-1.5 border-t border-gray-100 dark:border-gray-800 flex items-center gap-1 shrink-0">
               <button
                 ref={installAgentsButtonRef}
-                onClick={onShowAgentInstall}
+                onClick={() => {
+                  onShowAgentInstall();
+                  onCloseMobileSidebar?.();
+                }}
                 className="flex items-center gap-1 px-2 py-1 rounded-md text-[11px] font-medium text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 transition-colors"
               >
                 <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -911,7 +840,10 @@ export function LeftSidebar({
               </button>
               <button
                 type="button"
-                onClick={onShowSettings}
+                onClick={() => {
+                  onShowSettings();
+                  onCloseMobileSidebar?.();
+                }}
                 className="p-1 rounded-md text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
                 title="Settings"
               >
