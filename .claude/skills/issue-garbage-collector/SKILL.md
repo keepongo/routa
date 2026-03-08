@@ -142,37 +142,58 @@ Output:
 
 ---
 
-## Phase 2: Deep Analysis (claude -p)
+## Phase 2: Automatic Deep Analysis
 
-Only run on suspects from Phase 1. This saves cost.
+**IMPORTANT**: After Phase 1, proceed automatically to Phase 2 without asking. Do NOT ask "Would you like me to proceed?" — just do it.
 
-### When to Use claude -p
+### Execution Flow
 
-| Suspect Type | Example Command |
-|--------------|-----------------|
-| Duplicate | `claude -p "Check if these two issues are duplicates and merge if confirmed: docs/issues/A.md docs/issues/B.md"` |
-| Open | `claude -p "Check if this open issue has been resolved: docs/issues/X.md"` |
-| Stale | `claude -p "Triage this stale issue - close, escalate, or archive: docs/issues/Y.md"` |
+1. Run `python3 scripts/issue-scanner.py`
+2. For each suspect found, **automatically** perform deep analysis
+3. For each action needed, **execute immediately** (update status, merge, etc.)
+4. Only ask for confirmation on **destructive actions** (delete, merge)
+5. Report final summary when done
 
-### AI Judgment Rules
+### For Each Suspect Type
 
-When AI receives a Phase 2 request, it should:
+**Duplicates** — Read both files, compare content:
+- If same root cause → Merge (keep newer, add context from older)
+- If related but different → Add `related_issues` cross-reference
+- If distinct → Skip (false positive)
 
-1. **Read the issue file(s)** — understand the problem described
-2. **Check Relevant Files** — verify if referenced code still exists
-3. **Look for fixes** — search recent commits or code changes
-4. **Make a judgment**:
-   - For duplicates: DUPLICATE / RELATED / DISTINCT
-   - For open issues: RESOLVED / STILL_OPEN / NEEDS_INFO
-   - For stale issues: CLOSE / ESCALATE / ARCHIVE
-5. **Ask before modifying** — show diff, wait for approval
+**Open Issues** — Check if resolved:
+- Read the issue, check `Relevant Files` in codebase
+- If code shows fix → `python3 scripts/issue-scanner.py --resolve <file>`
+- If still broken → Leave as open
+- If unclear → Leave as open, add comment in issue
+
+**Stale Issues** (open > 30 days):
+- Check if code still exists
+- If fixed → Resolve
+- If code removed → Close with `--close`
+- If still relevant → Create GitHub issue for tracking
+
+### Quick Update Commands
+
+Use the scanner's update commands for fast changes:
+
+```bash
+# Resolve issues (status: open → resolved)
+python3 scripts/issue-scanner.py --resolve file1.md file2.md
+
+# Close issues (status: open → wontfix)
+python3 scripts/issue-scanner.py --close file.md
+
+# Generic field update
+python3 scripts/issue-scanner.py --set severity high --files file.md
+```
 
 ### Safety Rules
 
 1. **Never delete `_template.md`**
 2. **Never delete issues with `status: investigating`** — active work
-3. **Always ask for confirmation** before any deletion or merge
-4. **Show diff before changes** — let human verify
+3. **Ask for confirmation** only for: delete, merge
+4. **Auto-execute** for: status updates, adding cross-references
 5. **Preserve knowledge** — resolved issues are valuable
 
 ---
