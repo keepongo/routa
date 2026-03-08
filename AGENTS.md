@@ -43,7 +43,7 @@ After generating or modifying code, agents must run the following checks automat
 - Each commit does **one thing**: one feature, one bug fix, or one refactor.
 - No "kitchen sink" commits. If changes span multiple concerns, split into multiple commits.
 - Always include the related **GitHub issue ID** when applicable.
-- All tests + API contract check must pass before pushing.
+- All tests + API contract check must pass before pushing (enforced by pre-push hook).
 
 ### Git Worktree Isolation
 
