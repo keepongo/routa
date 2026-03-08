@@ -218,12 +218,44 @@ async fn acp_rpc(
 
             let session_id = uuid::Uuid::new_v4().to_string();
 
-            // If worktreeId is provided, override cwd with worktree path
+            // If worktreeId is provided, validate and override cwd with worktree path
+            // Session assignment is deferred until create_session succeeds
+            let mut validated_worktree_id: Option<String> = None;
             if let Some(ref wt_id) = worktree_id {
-                if let Ok(Some(wt)) = state.worktree_store.get(wt_id).await {
-                    if wt.status == "active" {
+                match state.worktree_store.get(wt_id).await {
+                    Ok(Some(wt)) if wt.status == "active" && wt.workspace_id == workspace_id => {
+                        if wt.session_id.is_some() {
+                            return Ok(AcpResponse::Json(Json(serde_json::json!({
+                                "jsonrpc": "2.0",
+                                "id": id,
+                                "error": {
+                                    "code": -32602,
+                                    "message": "Worktree is already assigned to another session"
+                                }
+                            }))));
+                        }
                         cwd = wt.worktree_path.clone();
-                        let _ = state.worktree_store.assign_session(wt_id, Some(&session_id)).await;
+                        validated_worktree_id = Some(wt_id.clone());
+                    }
+                    Ok(Some(_)) => {
+                        return Ok(AcpResponse::Json(Json(serde_json::json!({
+                            "jsonrpc": "2.0",
+                            "id": id,
+                            "error": {
+                                "code": -32602,
+                                "message": "Worktree is not active or does not belong to this workspace"
+                            }
+                        }))));
+                    }
+                    _ => {
+                        return Ok(AcpResponse::Json(Json(serde_json::json!({
+                            "jsonrpc": "2.0",
+                            "id": id,
+                            "error": {
+                                "code": -32602,
+                                "message": "Worktree not found"
+                            }
+                        }))));
                     }
                 }
             }
@@ -251,6 +283,13 @@ async fn acp_rpc(
                 .await
             {
                 Ok((_our_sid, _agent_sid)) => {
+                    // Assign worktree session now that creation succeeded
+                    if let Some(ref wt_id) = validated_worktree_id {
+                        if let Err(e) = state.worktree_store.assign_session(wt_id, Some(&session_id)).await {
+                            tracing::warn!("[ACP Route] Failed to assign worktree session: {}", e);
+                        }
+                    }
+
                     // Persist the session to the database immediately so it survives restarts
                     if let Err(e) = state
                         .acp_session_store

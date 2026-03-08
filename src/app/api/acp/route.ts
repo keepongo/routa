@@ -341,14 +341,28 @@ export async function POST(request: NextRequest) {
       }
 
       // ── Register session in memory immediately (UI can navigate now) ──
-      // If worktreeId provided, override cwd with the worktree path
+      // If worktreeId provided, validate and override cwd with the worktree path
+      // Session assignment is deferred until session creation succeeds
+      let validatedWorktreeId: string | undefined;
       if (worktreeId) {
         const system = getRoutaSystem();
         const worktree = await system.worktreeStore.get(worktreeId);
-        if (worktree && worktree.status === "active") {
-          cwd = worktree.worktreePath;
-          await system.worktreeStore.assignSession(worktreeId, sessionId);
+        if (!worktree || worktree.status !== "active" || worktree.workspaceId !== workspaceId) {
+          return jsonrpcResponse(id ?? null, null, {
+            code: -32602,
+            message: worktree
+              ? "Worktree is not active or does not belong to this workspace"
+              : "Worktree not found",
+          });
         }
+        if (worktree.sessionId) {
+          return jsonrpcResponse(id ?? null, null, {
+            code: -32602,
+            message: "Worktree is already assigned to another session",
+          });
+        }
+        cwd = worktree.worktreePath;
+        validatedWorktreeId = worktreeId;
       }
 
       const now = new Date();
@@ -605,6 +619,12 @@ export async function POST(request: NextRequest) {
 
           // Notify client that ACP is ready
           store.updateSessionAcpStatus(sessionId, "ready");
+
+          // Assign worktree session now that ACP creation succeeded
+          if (validatedWorktreeId) {
+            const system = getRoutaSystem();
+            await system.worktreeStore.assignSession(validatedWorktreeId, sessionId);
+          }
 
           // ── Persist to DB (fire-and-forget) ────────────────────────────
           persistSessionToDb({

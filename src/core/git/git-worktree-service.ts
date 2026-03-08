@@ -5,6 +5,7 @@
  * concurrency locking to prevent .git/worktrees corruption.
  */
 
+import fs from "fs/promises";
 import os from "os";
 import path from "path";
 import { getServerBridge } from "@/core/platform";
@@ -14,7 +15,15 @@ import type { Worktree } from "../models/worktree";
 import { createWorktree } from "../models/worktree";
 
 /**
+ * Shell-escape a single argument for safe interpolation.
+ */
+function shellEscape(arg: string): string {
+  return `'${arg.replace(/'/g, "'\\''")}'`;
+}
+
+/**
  * Execute a git command via the platform bridge.
+ * Arguments are properly shell-escaped to prevent injection.
  */
 async function execGit(
   args: string[],
@@ -22,7 +31,7 @@ async function execGit(
   timeout = 30_000
 ): Promise<{ stdout: string; stderr: string }> {
   const bridge = getServerBridge();
-  const command = ["git", ...args].join(" ");
+  const command = ["git", ...args.map(shellEscape)].join(" ");
   return bridge.process.exec(command, { cwd, timeout });
 }
 
@@ -103,6 +112,12 @@ export class GitWorktreeService {
       `wt/${options.label ? branchToSafeDirName(options.label) : shortId}`;
 
     return this.withRepoLock(repoPath, async () => {
+      // Fail fast if no process bridge (serverless environments)
+      const bridge = getServerBridge();
+      if (!bridge.process) {
+        throw new Error("Git worktree operations require local process execution");
+      }
+
       // Check if branch is already in use by another worktree
       const existingByBranch = await this.worktreeStore.findByBranch(codebaseId, branch);
       if (existingByBranch) {
@@ -132,6 +147,9 @@ export class GitWorktreeService {
       await this.worktreeStore.add(worktree);
 
       try {
+        // Ensure parent directory exists
+        await fs.mkdir(path.dirname(worktreePath), { recursive: true });
+
         // Prune stale worktree references
         await execGit(["worktree", "prune"], repoPath).catch(() => {});
 
@@ -249,11 +267,12 @@ export class GitWorktreeService {
       return { healthy: false, error: "Parent codebase not found" };
     }
 
-    const bridge = getServerBridge();
-
     // Check if worktree path exists
     try {
-      await bridge.process.exec(`test -d "${worktree.worktreePath}"`, {});
+      const stat = await fs.stat(worktree.worktreePath);
+      if (!stat.isDirectory()) {
+        throw new Error("Not a directory");
+      }
     } catch {
       await this.worktreeStore.updateStatus(worktreeId, "error", "Worktree directory missing");
       return { healthy: false, error: "Worktree directory missing" };
@@ -261,10 +280,10 @@ export class GitWorktreeService {
 
     // Check if .git file exists (worktrees have a .git file, not directory)
     try {
-      await bridge.process.exec(
-        `test -f "${path.join(worktree.worktreePath, ".git")}"`,
-        {}
-      );
+      const gitStat = await fs.stat(path.join(worktree.worktreePath, ".git"));
+      if (!gitStat.isFile()) {
+        throw new Error("Not a file");
+      }
     } catch {
       await this.worktreeStore.updateStatus(worktreeId, "error", "Not a valid worktree (.git file missing)");
       return { healthy: false, error: "Not a valid worktree (.git file missing)" };

@@ -14,6 +14,7 @@ import {
   integer,
   boolean,
   primaryKey,
+  uniqueIndex,
 } from "drizzle-orm/pg-core";
 
 // ─── Workspaces ─────────────────────────────────────────────────────
@@ -461,7 +462,10 @@ export const worktrees = pgTable("worktrees", {
   errorMessage: text("error_message"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
-});
+}, (table) => [
+  uniqueIndex("uq_worktrees_codebase_branch").on(table.codebaseId, table.branch),
+  uniqueIndex("uq_worktrees_path").on(table.worktreePath),
+]);
 
 // ─── Specialists (user-defined agent specialist configurations) ───────────
 

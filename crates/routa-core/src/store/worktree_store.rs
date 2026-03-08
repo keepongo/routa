@@ -49,7 +49,7 @@ impl WorktreeStore {
                     "SELECT id, codebase_id, workspace_id, worktree_path, branch, base_branch, status, session_id, label, error_message, created_at, updated_at
                      FROM worktrees WHERE id = ?1",
                 )?;
-                stmt.query_row(rusqlite::params![id], |row| Ok(row_to_worktree(row)))
+                stmt.query_row(rusqlite::params![id], |row| row_to_worktree(row))
                     .optional()
             })
             .await
@@ -64,7 +64,7 @@ impl WorktreeStore {
                      FROM worktrees WHERE codebase_id = ?1 ORDER BY created_at DESC",
                 )?;
                 let rows = stmt
-                    .query_map(rusqlite::params![codebase_id], |row| Ok(row_to_worktree(row)))?
+                    .query_map(rusqlite::params![codebase_id], |row| row_to_worktree(row))?
                     .collect::<Result<Vec<_>, _>>()?;
                 Ok(rows)
             })
@@ -80,7 +80,7 @@ impl WorktreeStore {
                      FROM worktrees WHERE workspace_id = ?1 ORDER BY created_at DESC",
                 )?;
                 let rows = stmt
-                    .query_map(rusqlite::params![workspace_id], |row| Ok(row_to_worktree(row)))?
+                    .query_map(rusqlite::params![workspace_id], |row| row_to_worktree(row))?
                     .collect::<Result<Vec<_>, _>>()?;
                 Ok(rows)
             })
@@ -137,7 +137,7 @@ impl WorktreeStore {
                     "SELECT id, codebase_id, workspace_id, worktree_path, branch, base_branch, status, session_id, label, error_message, created_at, updated_at
                      FROM worktrees WHERE codebase_id = ?1 AND branch = ?2",
                 )?;
-                stmt.query_row(rusqlite::params![codebase_id, branch], |row| Ok(row_to_worktree(row)))
+                stmt.query_row(rusqlite::params![codebase_id, branch], |row| row_to_worktree(row))
                     .optional()
             })
             .await
@@ -146,24 +146,24 @@ impl WorktreeStore {
 
 use rusqlite::Row;
 
-fn row_to_worktree(row: &Row<'_>) -> Worktree {
-    let created_ms: i64 = row.get(10).unwrap_or(0);
-    let updated_ms: i64 = row.get(11).unwrap_or(0);
+fn row_to_worktree(row: &Row<'_>) -> rusqlite::Result<Worktree> {
+    let created_ms: i64 = row.get(10)?;
+    let updated_ms: i64 = row.get(11)?;
 
-    Worktree {
-        id: row.get(0).unwrap_or_default(),
-        codebase_id: row.get(1).unwrap_or_default(),
-        workspace_id: row.get(2).unwrap_or_default(),
-        worktree_path: row.get(3).unwrap_or_default(),
-        branch: row.get(4).unwrap_or_default(),
-        base_branch: row.get(5).unwrap_or_default(),
-        status: row.get(6).unwrap_or_default(),
-        session_id: row.get(7).unwrap_or(None),
-        label: row.get(8).unwrap_or(None),
-        error_message: row.get(9).unwrap_or(None),
+    Ok(Worktree {
+        id: row.get(0)?,
+        codebase_id: row.get(1)?,
+        workspace_id: row.get(2)?,
+        worktree_path: row.get(3)?,
+        branch: row.get(4)?,
+        base_branch: row.get(5)?,
+        status: row.get(6)?,
+        session_id: row.get(7)?,
+        label: row.get(8)?,
+        error_message: row.get(9)?,
         created_at: chrono::DateTime::from_timestamp_millis(created_ms)
             .unwrap_or_else(|| Utc::now()),
         updated_at: chrono::DateTime::from_timestamp_millis(updated_ms)
             .unwrap_or_else(|| Utc::now()),
-    }
+    })
 }

@@ -35,8 +35,17 @@ export async function DELETE(
   const system = getRoutaSystem();
 
   // Clean up worktrees on disk before deleting the codebase
-  const service = new GitWorktreeService(system.worktreeStore, system.codebaseStore);
-  await service.removeAllForCodebase(codebaseId).catch(() => {});
+  try {
+    const service = new GitWorktreeService(system.worktreeStore, system.codebaseStore);
+    await service.removeAllForCodebase(codebaseId);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.error(`[Codebase DELETE] Worktree cleanup failed for ${codebaseId}:`, message);
+    return NextResponse.json(
+      { error: `Worktree cleanup failed: ${message}` },
+      { status: 500 }
+    );
+  }
 
   await system.codebaseStore.remove(codebaseId);
 

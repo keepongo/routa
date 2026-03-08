@@ -44,17 +44,23 @@ export class InMemoryWorktreeStore implements WorktreeStore {
   async updateStatus(worktreeId: string, status: WorktreeStatus, errorMessage?: string): Promise<void> {
     const wt = this.store.get(worktreeId);
     if (wt) {
-      wt.status = status;
-      wt.errorMessage = errorMessage;
-      wt.updatedAt = new Date();
+      this.store.set(worktreeId, {
+        ...wt,
+        status,
+        errorMessage,
+        updatedAt: new Date(),
+      });
     }
   }
 
   async assignSession(worktreeId: string, sessionId: string | null): Promise<void> {
     const wt = this.store.get(worktreeId);
     if (wt) {
-      wt.sessionId = sessionId ?? undefined;
-      wt.updatedAt = new Date();
+      this.store.set(worktreeId, {
+        ...wt,
+        sessionId: sessionId ?? undefined,
+        updatedAt: new Date(),
+      });
     }
   }
 

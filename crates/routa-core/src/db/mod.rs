@@ -266,6 +266,10 @@ impl Database {
                 );
                 CREATE INDEX IF NOT EXISTS idx_worktrees_workspace ON worktrees(workspace_id);
                 CREATE INDEX IF NOT EXISTS idx_worktrees_codebase ON worktrees(codebase_id);
+                CREATE UNIQUE INDEX IF NOT EXISTS uq_worktrees_codebase_branch
+                    ON worktrees(codebase_id, branch);
+                CREATE UNIQUE INDEX IF NOT EXISTS uq_worktrees_path
+                    ON worktrees(worktree_path);
                 "
             )
         })?;
