@@ -50,6 +50,17 @@ export function getSqliteDatabase(dbPath?: string): SqliteDatabase {
  * Uses raw SQL for CREATE TABLE IF NOT EXISTS.
  */
 function initializeSqliteTables(db: SqliteDatabase): void {
+  function runAddColumn(sqlStatement: ReturnType<typeof sql>) {
+    try {
+      db.run(sqlStatement);
+    } catch (error) {
+      const message = error instanceof Error ? error.message.toLowerCase() : "";
+      if (!message.includes("duplicate column name")) {
+        throw error;
+      }
+    }
+  }
+
   db.run(sql`
     CREATE TABLE IF NOT EXISTS workspaces (
       id TEXT PRIMARY KEY,
@@ -118,25 +129,25 @@ function initializeSqliteTables(db: SqliteDatabase): void {
       updated_at INTEGER NOT NULL DEFAULT (unixepoch('now') * 1000)
     )
   `);
-  try { db.run(sql`ALTER TABLE tasks ADD COLUMN board_id TEXT`); } catch { /* column already exists */ }
-  try { db.run(sql`ALTER TABLE tasks ADD COLUMN column_id TEXT`); } catch { /* column already exists */ }
-  try { db.run(sql`ALTER TABLE tasks ADD COLUMN position INTEGER NOT NULL DEFAULT 0`); } catch { /* column already exists */ }
-  try { db.run(sql`ALTER TABLE tasks ADD COLUMN priority TEXT`); } catch { /* column already exists */ }
-  try { db.run(sql`ALTER TABLE tasks ADD COLUMN labels TEXT DEFAULT '[]'`); } catch { /* column already exists */ }
-  try { db.run(sql`ALTER TABLE tasks ADD COLUMN assignee TEXT`); } catch { /* column already exists */ }
-  try { db.run(sql`ALTER TABLE tasks ADD COLUMN assigned_provider TEXT`); } catch { /* column already exists */ }
-  try { db.run(sql`ALTER TABLE tasks ADD COLUMN assigned_role TEXT`); } catch { /* column already exists */ }
-  try { db.run(sql`ALTER TABLE tasks ADD COLUMN assigned_specialist_id TEXT`); } catch { /* column already exists */ }
-  try { db.run(sql`ALTER TABLE tasks ADD COLUMN assigned_specialist_name TEXT`); } catch { /* column already exists */ }
-  try { db.run(sql`ALTER TABLE tasks ADD COLUMN trigger_session_id TEXT`); } catch { /* column already exists */ }
-  try { db.run(sql`ALTER TABLE tasks ADD COLUMN github_id TEXT`); } catch { /* column already exists */ }
-  try { db.run(sql`ALTER TABLE tasks ADD COLUMN github_number INTEGER`); } catch { /* column already exists */ }
-  try { db.run(sql`ALTER TABLE tasks ADD COLUMN github_url TEXT`); } catch { /* column already exists */ }
-  try { db.run(sql`ALTER TABLE tasks ADD COLUMN github_repo TEXT`); } catch { /* column already exists */ }
-  try { db.run(sql`ALTER TABLE tasks ADD COLUMN github_state TEXT`); } catch { /* column already exists */ }
-  try { db.run(sql`ALTER TABLE tasks ADD COLUMN github_synced_at INTEGER`); } catch { /* column already exists */ }
-  try { db.run(sql`ALTER TABLE tasks ADD COLUMN last_sync_error TEXT`); } catch { /* column already exists */ }
-  try { db.run(sql`ALTER TABLE tasks ADD COLUMN session_id TEXT`); } catch { /* column already exists */ }
+  runAddColumn(sql`ALTER TABLE tasks ADD COLUMN board_id TEXT`);
+  runAddColumn(sql`ALTER TABLE tasks ADD COLUMN column_id TEXT`);
+  runAddColumn(sql`ALTER TABLE tasks ADD COLUMN position INTEGER NOT NULL DEFAULT 0`);
+  runAddColumn(sql`ALTER TABLE tasks ADD COLUMN priority TEXT`);
+  runAddColumn(sql`ALTER TABLE tasks ADD COLUMN labels TEXT DEFAULT '[]'`);
+  runAddColumn(sql`ALTER TABLE tasks ADD COLUMN assignee TEXT`);
+  runAddColumn(sql`ALTER TABLE tasks ADD COLUMN assigned_provider TEXT`);
+  runAddColumn(sql`ALTER TABLE tasks ADD COLUMN assigned_role TEXT`);
+  runAddColumn(sql`ALTER TABLE tasks ADD COLUMN assigned_specialist_id TEXT`);
+  runAddColumn(sql`ALTER TABLE tasks ADD COLUMN assigned_specialist_name TEXT`);
+  runAddColumn(sql`ALTER TABLE tasks ADD COLUMN trigger_session_id TEXT`);
+  runAddColumn(sql`ALTER TABLE tasks ADD COLUMN github_id TEXT`);
+  runAddColumn(sql`ALTER TABLE tasks ADD COLUMN github_number INTEGER`);
+  runAddColumn(sql`ALTER TABLE tasks ADD COLUMN github_url TEXT`);
+  runAddColumn(sql`ALTER TABLE tasks ADD COLUMN github_repo TEXT`);
+  runAddColumn(sql`ALTER TABLE tasks ADD COLUMN github_state TEXT`);
+  runAddColumn(sql`ALTER TABLE tasks ADD COLUMN github_synced_at INTEGER`);
+  runAddColumn(sql`ALTER TABLE tasks ADD COLUMN last_sync_error TEXT`);
+  runAddColumn(sql`ALTER TABLE tasks ADD COLUMN session_id TEXT`);
 
   db.run(sql`
     CREATE TABLE IF NOT EXISTS notes (

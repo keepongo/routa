@@ -333,8 +333,8 @@ fn row_to_task(row: &Row<'_>) -> Task {
             .and_then(|s| VerificationVerdict::from_str(&s)),
         verification_report: row.get(32).unwrap_or(None),
         created_at: chrono::DateTime::from_timestamp_millis(created_ms)
-            .unwrap_or_else(|| Utc::now()),
+            .unwrap_or_else(Utc::now),
         updated_at: chrono::DateTime::from_timestamp_millis(updated_ms)
-            .unwrap_or_else(|| Utc::now()),
+            .unwrap_or_else(Utc::now),
     }
 }

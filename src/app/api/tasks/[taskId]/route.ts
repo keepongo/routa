@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getRoutaSystem } from "@/core/routa-system";
-import { TaskPriority, type Task } from "@/core/models/task";
+import { TaskPriority, TaskStatus, type Task } from "@/core/models/task";
 import { columnIdToTaskStatus, taskStatusToColumnId } from "@/core/models/kanban";
 import { updateGitHubIssue } from "@/core/kanban/github-issues";
 import { getInternalApiOrigin, triggerAssignedTaskAgent } from "@/core/kanban/agent-trigger";
@@ -36,6 +36,15 @@ function parsePriority(value: unknown): TaskPriority | undefined {
 
   return Object.values(TaskPriority).includes(value as TaskPriority)
     ? value as TaskPriority
+    : undefined;
+}
+
+function parseStatus(value: unknown): TaskStatus | undefined {
+  if (value === undefined || value === null || value === "") return undefined;
+  if (typeof value !== "string") return undefined;
+
+  return Object.values(TaskStatus).includes(value as TaskStatus)
+    ? value as TaskStatus
     : undefined;
 }
 
@@ -123,8 +132,23 @@ export async function PATCH(
     nextTask.priority = normalizedPriority;
   }
 
+  const normalizedStatus = parseStatus(body.status);
+  if (body.status !== undefined && normalizedStatus === undefined) {
+    return NextResponse.json({ error: `Invalid status: ${String(body.status)}` }, { status: 400 });
+  }
   if (body.status !== undefined) {
-    nextTask.status = body.status;
+    nextTask.status = normalizedStatus as TaskStatus;
+  }
+
+  if (body.columnId !== undefined && body.status !== undefined) {
+    const expectedStatus = columnIdToTaskStatus(body.columnId);
+    const expectedColumnId = taskStatusToColumnId(normalizedStatus);
+    if (expectedStatus !== normalizedStatus || expectedColumnId !== body.columnId) {
+      return NextResponse.json(
+        { error: "columnId and status must describe the same workflow state" },
+        { status: 400 },
+      );
+    }
   }
 
   if (body.retryTrigger) {
@@ -162,7 +186,7 @@ export async function PATCH(
   );
   const retryingTrigger = body.retryTrigger === true;
 
-  if ((enteringDev || assignedWhileInDev || retryingTrigger) && !nextTask.triggerSessionId && nextTask.assignedProvider) {
+  if ((enteringDev || assignedWhileInDev || retryingTrigger) && !nextTask.triggerSessionId) {
     const preferredCodebase = body.repoPath
       ? await system.codebaseStore.findByRepoPath(nextTask.workspaceId, body.repoPath)
       : await system.codebaseStore.getDefault(nextTask.workspaceId);

@@ -15,18 +15,10 @@ use crate::store::{
 };
 
 /// Docker state for managing Docker-based agent execution.
+#[derive(Default)]
 pub struct DockerState {
     pub detector: DockerDetector,
     pub process_manager: DockerProcessManager,
-}
-
-impl Default for DockerState {
-    fn default() -> Self {
-        Self {
-            detector: DockerDetector::new(),
-            process_manager: DockerProcessManager::new(),
-        }
-    }
 }
 
 /// Shared state accessible by all API handlers.

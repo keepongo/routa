@@ -254,10 +254,17 @@ function HomeTodoPreview({
       return;
     }
 
+    const controller = new AbortController();
+
     const fetchTasks = async () => {
       try {
-        const res = await fetch(`/api/tasks?workspaceId=${encodeURIComponent(workspaceId)}`, { cache: "no-store" });
+        setTasks([]);
+        const res = await fetch(`/api/tasks?workspaceId=${encodeURIComponent(workspaceId)}`, {
+          cache: "no-store",
+          signal: controller.signal,
+        });
         const data = await res.json();
+        if (controller.signal.aborted) return;
         const nextTasks = Array.isArray(data?.tasks) ? data.tasks as HomeTaskInfo[] : [];
         setTasks(
           nextTasks
@@ -266,11 +273,13 @@ function HomeTodoPreview({
             .slice(0, 4),
         );
       } catch {
+        if (controller.signal.aborted) return;
         setTasks([]);
       }
     };
 
     void fetchTasks();
+    return () => controller.abort();
   }, [workspaceId, refreshKey]);
 
   if (!workspaceId || tasks.length === 0) {

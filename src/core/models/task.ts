@@ -94,6 +94,7 @@ export function createTask(params: {
   githubState?: string;
   githubSyncedAt?: Date;
   lastSyncError?: string;
+  status?: TaskStatus;
 }): Task {
   const now = new Date();
   return {
@@ -103,7 +104,7 @@ export function createTask(params: {
     scope: params.scope,
     acceptanceCriteria: params.acceptanceCriteria,
     verificationCommands: params.verificationCommands,
-    status: TaskStatus.PENDING,
+    status: params.status ?? TaskStatus.PENDING,
     boardId: params.boardId,
     columnId: params.columnId,
     position: params.position ?? 0,

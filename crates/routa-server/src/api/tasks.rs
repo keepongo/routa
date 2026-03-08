@@ -115,6 +115,7 @@ async fn create_task(
     );
     task.board_id = body.board_id.or_else(|| Some(default_board.id.clone()));
     task.column_id = body.column_id.or_else(|| Some("backlog".to_string()));
+    task.status = column_id_to_task_status(task.column_id.as_deref());
     task.position = body.position.unwrap_or(0);
     task.priority = match body.priority {
         Some(value) => Some(
@@ -264,6 +265,16 @@ async fn update_task(
         task.last_sync_error = None;
     }
 
+    if has_column_update && has_status_update {
+        let expected_status = column_id_to_task_status(task.column_id.as_deref());
+        let expected_column_id = task_status_to_column_id(&task.status);
+        if expected_status != task.status || task.column_id.as_deref() != Some(expected_column_id) {
+            return Err(ServerError::BadRequest(
+                "columnId and status must describe the same workflow state".to_string(),
+            ));
+        }
+    }
+
     if has_column_update && !has_status_update {
         task.status = column_id_to_task_status(task.column_id.as_deref());
     }
@@ -308,7 +319,6 @@ async fn update_task(
 
     if (entering_dev || assigned_while_in_dev || retrying_trigger)
         && task.trigger_session_id.is_none()
-        && task.assigned_provider.is_some()
     {
         let codebase = resolve_codebase(&state, &task.workspace_id, repo_path.as_deref()).await?;
         let trigger_result = trigger_assigned_task_agent(

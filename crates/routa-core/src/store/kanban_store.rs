@@ -56,9 +56,23 @@ impl KanbanStore {
     pub async fn set_default_for_workspace(&self, workspace_id: &str, board_id: &str) -> Result<(), ServerError> {
         let ws = workspace_id.to_string();
         let board_id = board_id.to_string();
+        let workspace_label = ws.clone();
+        let board_label = board_id.clone();
         let now = Utc::now().timestamp_millis();
         self.db
             .with_conn_async(move |conn| {
+                let exists = conn
+                    .query_row(
+                        "SELECT 1 FROM kanban_boards WHERE workspace_id = ?1 AND id = ?2 LIMIT 1",
+                        rusqlite::params![ws, board_id],
+                        |_| Ok(()),
+                    )
+                    .optional()?;
+
+                if exists.is_none() {
+                    return Err(rusqlite::Error::QueryReturnedNoRows);
+                }
+
                 conn.execute(
                     "UPDATE kanban_boards SET is_default = CASE WHEN id = ?1 THEN 1 ELSE 0 END, updated_at = ?2 WHERE workspace_id = ?3",
                     rusqlite::params![board_id, now, ws],
@@ -66,6 +80,12 @@ impl KanbanStore {
                 Ok(())
             })
             .await
+            .map_err(|error| match error {
+                ServerError::Database(message) if message.contains("Query returned no rows") => {
+                    ServerError::NotFound(format!("Board {} not found in workspace {}", board_label, workspace_label))
+                }
+                other => other,
+            })
     }
 
     pub async fn ensure_default_board(&self, workspace_id: &str) -> Result<KanbanBoard, ServerError> {
@@ -75,8 +95,17 @@ impl KanbanStore {
         }
 
         let board = default_kanban_board(workspace_id.to_string());
-        self.create(&board).await?;
-        Ok(board)
+        match self.create(&board).await {
+            Ok(()) => Ok(board),
+            Err(error) => {
+                let boards = self.list_by_workspace(workspace_id).await?;
+                if let Some(existing) = boards.into_iter().find(|item| item.is_default) {
+                    Ok(existing)
+                } else {
+                    Err(error)
+                }
+            }
+        }
     }
 
     pub async fn get(&self, id: &str) -> Result<Option<KanbanBoard>, ServerError> {

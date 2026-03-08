@@ -23,6 +23,7 @@ impl TaskPriority {
         }
     }
 
+    #[allow(clippy::should_implement_trait)]
     pub fn from_str(s: &str) -> Option<Self> {
         match s {
             "low" => Some(Self::Low),
@@ -65,6 +66,7 @@ impl TaskStatus {
         }
     }
 
+    #[allow(clippy::should_implement_trait)]
     pub fn from_str(s: &str) -> Option<Self> {
         match s {
             "PENDING" => Some(Self::Pending),
@@ -98,6 +100,7 @@ impl VerificationVerdict {
         }
     }
 
+    #[allow(clippy::should_implement_trait)]
     pub fn from_str(s: &str) -> Option<Self> {
         match s {
             "APPROVED" => Some(Self::Approved),
@@ -178,6 +181,7 @@ pub struct Task {
 }
 
 impl Task {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         id: String,
         title: String,

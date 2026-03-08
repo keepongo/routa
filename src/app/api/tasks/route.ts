@@ -12,6 +12,7 @@ import { createTask, Task, TaskStatus, TaskPriority } from "@/core/models/task";
 import { v4 as uuidv4 } from "uuid";
 import { ensureDefaultBoard } from "@/core/kanban/boards";
 import { createGitHubIssue, parseGitHubRepo } from "@/core/kanban/github-issues";
+import { columnIdToTaskStatus } from "@/core/models/kanban";
 
 export const dynamic = "force-dynamic";
 
@@ -102,10 +103,35 @@ export async function POST(request: NextRequest) {
     repoPath,
   } = body;
 
-  if (!title) {
+  const normalizedTitle = typeof title === "string" ? title : "";
+  const normalizedObjective = typeof objective === "string" ? objective : "";
+  const normalizedWorkspaceId = typeof workspaceId === "string" && workspaceId.trim() ? workspaceId : "default";
+  const normalizedSessionId = typeof sessionId === "string" ? sessionId : undefined;
+  const normalizedScope = typeof scope === "string" ? scope : undefined;
+  const normalizedAcceptanceCriteria = Array.isArray(acceptanceCriteria)
+    ? acceptanceCriteria.filter((item): item is string => typeof item === "string")
+    : undefined;
+  const normalizedVerificationCommands = Array.isArray(verificationCommands)
+    ? verificationCommands.filter((item): item is string => typeof item === "string")
+    : undefined;
+  const normalizedDependencies = Array.isArray(dependencies)
+    ? dependencies.filter((item): item is string => typeof item === "string")
+    : undefined;
+  const normalizedParallelGroup = typeof parallelGroup === "string" ? parallelGroup : undefined;
+  const normalizedBoardId = typeof boardId === "string" ? boardId : undefined;
+  const normalizedColumnId = typeof columnId === "string" ? columnId : undefined;
+  const normalizedAssignee = typeof assignee === "string" ? assignee : undefined;
+  const normalizedAssignedProvider = typeof assignedProvider === "string" ? assignedProvider : undefined;
+  const normalizedAssignedRole = typeof assignedRole === "string" ? assignedRole : undefined;
+  const normalizedAssignedSpecialistId = typeof assignedSpecialistId === "string" ? assignedSpecialistId : undefined;
+  const normalizedAssignedSpecialistName = typeof assignedSpecialistName === "string" ? assignedSpecialistName : undefined;
+  const normalizedCreateGitHubIssue = shouldCreateGitHubIssue === true;
+  const normalizedRepoPath = typeof repoPath === "string" ? repoPath : undefined;
+
+  if (!normalizedTitle) {
     return NextResponse.json({ error: "title is required" }, { status: 400 });
   }
-  if (!objective) {
+  if (!normalizedObjective) {
     return NextResponse.json({ error: "objective is required" }, { status: 400 });
   }
 
@@ -117,11 +143,11 @@ export async function POST(request: NextRequest) {
   const normalizedLabels = sanitizeLabels(labels);
 
   const system = getRoutaSystem();
-  const defaultBoard = await ensureDefaultBoard(system, workspaceId);
+  const defaultBoard = await ensureDefaultBoard(system, normalizedWorkspaceId);
 
-  const codebase = repoPath
-    ? await system.codebaseStore.findByRepoPath(workspaceId, repoPath)
-    : await system.codebaseStore.getDefault(workspaceId);
+  const codebase = normalizedRepoPath
+    ? await system.codebaseStore.findByRepoPath(normalizedWorkspaceId, normalizedRepoPath)
+    : await system.codebaseStore.getDefault(normalizedWorkspaceId);
 
   const repo = parseGitHubRepo(codebase?.sourceUrl);
 
@@ -133,16 +159,16 @@ export async function POST(request: NextRequest) {
   let githubSyncedAt: Date | undefined;
   let lastSyncError: string | undefined;
 
-  if (shouldCreateGitHubIssue) {
+  if (normalizedCreateGitHubIssue) {
     if (!repo) {
       lastSyncError = "Selected codebase is not linked to a GitHub repository.";
     } else {
       try {
         const issue = await createGitHubIssue(repo, {
-          title,
-          body: objective,
+          title: normalizedTitle,
+          body: normalizedObjective,
           labels: normalizedLabels,
-          assignees: assignee ? [assignee] : undefined,
+          assignees: normalizedAssignee ? [normalizedAssignee] : undefined,
         });
         githubId = issue.id;
         githubNumber = issue.number;
@@ -158,25 +184,26 @@ export async function POST(request: NextRequest) {
 
   const task = createTask({
     id: uuidv4(),
-    title,
-    objective,
-    workspaceId,
-    sessionId,
-    scope,
-    acceptanceCriteria,
-    verificationCommands,
-    dependencies,
-    parallelGroup,
-    boardId: boardId ?? defaultBoard.id,
-    columnId: columnId ?? "backlog",
+    title: normalizedTitle,
+    objective: normalizedObjective,
+    workspaceId: normalizedWorkspaceId,
+    sessionId: normalizedSessionId,
+    scope: normalizedScope,
+    acceptanceCriteria: normalizedAcceptanceCriteria,
+    verificationCommands: normalizedVerificationCommands,
+    dependencies: normalizedDependencies,
+    parallelGroup: normalizedParallelGroup,
+    boardId: normalizedBoardId ?? defaultBoard.id,
+    columnId: normalizedColumnId ?? "backlog",
+    status: columnIdToTaskStatus(normalizedColumnId),
     position: typeof position === "number" ? position : 0,
     priority: normalizedPriority,
     labels: normalizedLabels,
-    assignee,
-    assignedProvider,
-    assignedRole,
-    assignedSpecialistId,
-    assignedSpecialistName,
+    assignee: normalizedAssignee,
+    assignedProvider: normalizedAssignedProvider,
+    assignedRole: normalizedAssignedRole,
+    assignedSpecialistId: normalizedAssignedSpecialistId,
+    assignedSpecialistName: normalizedAssignedSpecialistName,
     githubId,
     githubNumber,
     githubUrl,

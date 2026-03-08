@@ -30,6 +30,22 @@ function getHeaders(token: string) {
   };
 }
 
+async function fetchGitHub(url: string, init: RequestInit): Promise<Response> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 10_000);
+
+  try {
+    return await fetch(url, { ...init, signal: controller.signal });
+  } catch (error) {
+    if (error instanceof Error && error.name === "AbortError") {
+      throw new Error("GitHub request timed out");
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 export function parseGitHubRepo(sourceUrl?: string): string | undefined {
   if (!sourceUrl) return undefined;
   const parsed = parseGitHubUrl(sourceUrl);
@@ -42,7 +58,7 @@ export async function createGitHubIssue(repo: string, payload: GitHubIssuePayloa
     throw new Error("GITHUB_TOKEN is not configured.");
   }
 
-  const response = await fetch(`https://api.github.com/repos/${repo}/issues`, {
+  const response = await fetchGitHub(`https://api.github.com/repos/${repo}/issues`, {
     method: "POST",
     headers: getHeaders(token),
     body: JSON.stringify({
@@ -73,7 +89,7 @@ export async function updateGitHubIssue(repo: string, issueNumber: number, paylo
     throw new Error("GITHUB_TOKEN is not configured.");
   }
 
-  const response = await fetch(`https://api.github.com/repos/${repo}/issues/${issueNumber}`, {
+  const response = await fetchGitHub(`https://api.github.com/repos/${repo}/issues/${issueNumber}`, {
     method: "PATCH",
     headers: getHeaders(token),
     body: JSON.stringify({

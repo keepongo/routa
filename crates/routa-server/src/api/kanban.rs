@@ -42,9 +42,14 @@ async fn create_board(
     State(state): State<AppState>,
     Json(body): Json<CreateBoardRequest>,
 ) -> Result<(axum::http::StatusCode, Json<serde_json::Value>), ServerError> {
+    let name = body.name.trim();
+    if name.is_empty() {
+        return Err(ServerError::BadRequest("board name cannot be blank".to_string()));
+    }
+
     let mut board = default_kanban_board(body.workspace_id.clone());
     board.id = uuid::Uuid::new_v4().to_string();
-    board.name = body.name;
+    board.name = name.to_string();
     board.is_default = body.is_default.unwrap_or(false);
     board.created_at = Utc::now();
     board.updated_at = board.created_at;

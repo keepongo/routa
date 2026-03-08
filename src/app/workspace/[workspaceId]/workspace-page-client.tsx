@@ -110,24 +110,48 @@ export function WorkspacePageClient({
 
   // Fetch tasks
   useEffect(() => {
+    const controller = new AbortController();
+
     (async () => {
       try {
-        const res = await fetch(`/api/tasks?workspaceId=${encodeURIComponent(workspaceId)}`, { cache: "no-store" });
+        setTasks([]);
+        const res = await fetch(`/api/tasks?workspaceId=${encodeURIComponent(workspaceId)}`, {
+          cache: "no-store",
+          signal: controller.signal,
+        });
         const data = await res.json();
+        if (controller.signal.aborted) return;
         setTasks(Array.isArray(data?.tasks) ? data.tasks : []);
-      } catch { /* ignore */ }
+      } catch {
+        if (controller.signal.aborted) return;
+        setTasks([]);
+      }
     })();
+
+    return () => controller.abort();
   }, [workspaceId, refreshKey]);
 
   // Fetch boards
   useEffect(() => {
+    const controller = new AbortController();
+
     (async () => {
       try {
-        const res = await fetch(`/api/kanban/boards?workspaceId=${encodeURIComponent(workspaceId)}`, { cache: "no-store" });
+        setBoards([]);
+        const res = await fetch(`/api/kanban/boards?workspaceId=${encodeURIComponent(workspaceId)}`, {
+          cache: "no-store",
+          signal: controller.signal,
+        });
         const data = await res.json();
+        if (controller.signal.aborted) return;
         setBoards(Array.isArray(data?.boards) ? data.boards : []);
-      } catch { /* ignore */ }
+      } catch {
+        if (controller.signal.aborted) return;
+        setBoards([]);
+      }
     })();
+
+    return () => controller.abort();
   }, [workspaceId, refreshKey]);
 
   // Fetch background tasks
