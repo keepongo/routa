@@ -1,9 +1,10 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { usePathname } from "next/navigation";
 import type { AcpProviderInfo } from "@/client/acp-client";
 import type { CodebaseData } from "@/client/hooks/use-workspaces";
-import type { KanbanBoardInfo, TaskInfo } from "./types";
+import type { KanbanBoardInfo, SessionInfo, TaskInfo } from "./types";
 
 interface SpecialistOption {
   id: string;
@@ -15,6 +16,7 @@ interface KanbanTabProps {
   workspaceId: string;
   boards: KanbanBoardInfo[];
   tasks: TaskInfo[];
+  sessions: SessionInfo[];
   providers: AcpProviderInfo[];
   specialists: SpecialistOption[];
   codebases: CodebaseData[];
@@ -39,7 +41,8 @@ const EMPTY_DRAFT: DraftIssue = {
 
 const ROLE_OPTIONS = ["CRAFTER", "ROUTA", "GATE", "DEVELOPER"];
 
-export function KanbanTab({ workspaceId, boards, tasks, providers, specialists, codebases, onRefresh }: KanbanTabProps) {
+export function KanbanTab({ workspaceId, boards, tasks, sessions, providers, specialists, codebases, onRefresh }: KanbanTabProps) {
+  const pathname = usePathname();
   const defaultBoardId = useMemo(
     () => boards.find((board) => board.isDefault)?.id ?? boards[0]?.id ?? null,
     [boards],
@@ -98,6 +101,11 @@ export function KanbanTab({ workspaceId, boards, tasks, providers, specialists, 
     return Array.from(uniqueProviders.values());
   }, [providers]);
 
+  const sessionMap = useMemo(
+    () => new Map(sessions.map((session) => [session.sessionId, session])),
+    [sessions],
+  );
+
   async function patchTask(taskId: string, payload: Record<string, unknown>) {
     const response = await fetch(`/api/tasks/${encodeURIComponent(taskId)}`, {
       method: "PATCH",
@@ -135,6 +143,14 @@ export function KanbanTab({ workspaceId, boards, tasks, providers, specialists, 
     setLocalTasks((current) => [...current, data.task as TaskInfo]);
     setDraft({ ...EMPTY_DRAFT, createGitHubIssue: githubAvailable });
     setShowCreateModal(false);
+    onRefresh();
+  }
+
+  async function retryTaskTrigger(taskId: string) {
+    const updated = await patchTask(taskId, { retryTrigger: true });
+    if (updated.triggerSessionId) {
+      setActiveSessionId(updated.triggerSessionId);
+    }
     onRefresh();
   }
 
@@ -230,6 +246,12 @@ export function KanbanTab({ workspaceId, boards, tasks, providers, specialists, 
           >
             New board
           </button>
+          <a
+            href={pathname?.endsWith("/kanban") ? `/workspace/${workspaceId}` : `/workspace/${workspaceId}/kanban`}
+            className="rounded-lg border border-gray-200 dark:border-gray-700 px-3 py-2 text-sm text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-[#191c28]"
+          >
+            {pathname?.endsWith("/kanban") ? "Dashboard view" : "Board page"}
+          </a>
         </div>
         <button
           onClick={() => setShowCreateModal(true)}
@@ -266,6 +288,12 @@ export function KanbanTab({ workspaceId, boards, tasks, providers, specialists, 
 
                   <div className="space-y-2">
                     {columnTasks.map((task) => {
+                      const linkedSession = task.triggerSessionId ? sessionMap.get(task.triggerSessionId) : undefined;
+                      const sessionStatus = linkedSession?.acpStatus;
+                      const sessionError = linkedSession?.acpError;
+                      const canRetry = Boolean(task.assignedProvider) && (
+                        sessionStatus === "error" || (!task.triggerSessionId && task.columnId === "dev")
+                      );
                       const assignment = assignmentDrafts[task.id] ?? {
                         assignedProvider: task.assignedProvider ?? availableProviders[0]?.id ?? "opencode",
                         assignedRole: task.assignedRole ?? "CRAFTER",
@@ -395,17 +423,50 @@ export function KanbanTab({ workspaceId, boards, tasks, providers, specialists, 
                           )}
 
                           <div className="mt-3 flex items-center justify-between gap-2 text-[11px]">
-                            <div className="truncate text-gray-400 dark:text-gray-500">
-                              {task.lastSyncError ? task.lastSyncError : task.githubSyncedAt ? `Synced ${new Date(task.githubSyncedAt).toLocaleString()}` : "Not synced"}
+                            <div className="min-w-0 flex-1">
+                              <div className="truncate text-gray-400 dark:text-gray-500">
+                                {sessionStatus === "connecting"
+                                  ? "Session starting..."
+                                  : sessionStatus === "error"
+                                    ? (sessionError ?? "Session failed")
+                                    : task.lastSyncError
+                                      ? task.lastSyncError
+                                      : task.githubSyncedAt
+                                        ? `Synced ${new Date(task.githubSyncedAt).toLocaleString()}`
+                                        : "Not synced"}
+                              </div>
+                              {sessionStatus && (
+                                <div className="mt-1 flex items-center gap-1.5">
+                                  <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${
+                                    sessionStatus === "ready"
+                                      ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-300"
+                                      : sessionStatus === "error"
+                                        ? "bg-rose-100 text-rose-700 dark:bg-rose-900/20 dark:text-rose-300"
+                                        : "bg-amber-100 text-amber-700 dark:bg-amber-900/20 dark:text-amber-300"
+                                  }`}>
+                                    {sessionStatus}
+                                  </span>
+                                </div>
+                              )}
                             </div>
-                            {task.triggerSessionId && (
-                              <button
-                                onClick={() => setActiveSessionId(task.triggerSessionId ?? null)}
-                                className="rounded-md bg-violet-100 px-2 py-1 text-violet-700 hover:bg-violet-200 dark:bg-violet-900/20 dark:text-violet-300"
-                              >
-                                View session
-                              </button>
-                            )}
+                            <div className="flex items-center gap-2">
+                              {canRetry && (
+                                <button
+                                  onClick={() => void retryTaskTrigger(task.id)}
+                                  className="rounded-md border border-amber-200 bg-amber-50 px-2 py-1 text-amber-700 hover:bg-amber-100 dark:border-amber-800/50 dark:bg-amber-900/10 dark:text-amber-300"
+                                >
+                                  Rerun
+                                </button>
+                              )}
+                              {task.triggerSessionId && (
+                                <button
+                                  onClick={() => setActiveSessionId(task.triggerSessionId ?? null)}
+                                  className="rounded-md bg-violet-100 px-2 py-1 text-violet-700 hover:bg-violet-200 dark:bg-violet-900/20 dark:text-violet-300"
+                                >
+                                  View session
+                                </button>
+                              )}
+                            </div>
                           </div>
                         </div>
                       );

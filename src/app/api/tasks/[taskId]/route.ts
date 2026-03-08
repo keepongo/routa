@@ -40,7 +40,11 @@ export async function PATCH(
     return NextResponse.json({ error: "Task not found" }, { status: 404 });
   }
 
-  const body = await request.json() as Partial<Task> & { repoPath?: string; syncToGitHub?: boolean };
+  const body = await request.json() as Partial<Task> & {
+    repoPath?: string;
+    syncToGitHub?: boolean;
+    retryTrigger?: boolean;
+  };
   const nextTask: Task = {
     ...existing,
     ...body,
@@ -48,6 +52,11 @@ export async function PATCH(
     position: body.position ?? existing.position,
     updatedAt: new Date(),
   };
+
+  if (body.retryTrigger) {
+    nextTask.triggerSessionId = undefined;
+    nextTask.lastSyncError = undefined;
+  }
 
   if (body.columnId && !body.status) {
     nextTask.status = columnIdToTaskStatus(body.columnId);
@@ -77,8 +86,9 @@ export async function PATCH(
   const assignedWhileInDev = nextTask.columnId === "dev" && !existing.triggerSessionId && (
     body.assignedProvider !== undefined || body.assignedSpecialistId !== undefined || body.assignedRole !== undefined
   );
+  const retryingTrigger = body.retryTrigger === true;
 
-  if ((enteringDev || assignedWhileInDev) && !nextTask.triggerSessionId && nextTask.assignedProvider) {
+  if ((enteringDev || assignedWhileInDev || retryingTrigger) && !nextTask.triggerSessionId && nextTask.assignedProvider) {
     const preferredCodebase = body.repoPath
       ? await system.codebaseStore.findByRepoPath(nextTask.workspaceId, body.repoPath)
       : await system.codebaseStore.getDefault(nextTask.workspaceId);

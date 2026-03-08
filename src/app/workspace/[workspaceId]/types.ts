@@ -7,6 +7,8 @@ export interface SessionInfo {
   workspaceId: string;
   provider?: string;
   role?: string;
+  acpStatus?: "connecting" | "ready" | "error";
+  acpError?: string;
   createdAt: string;
 }
 
