@@ -257,7 +257,7 @@ describe("ClaudeCodeSdkAdapter", () => {
       const chunkNotifs = notifications.filter(
         (n) =>
           n.method === "session/update" &&
-          (n.params as Record<string, unknown>)?.update?.sessionUpdate === "agent_message_chunk"
+          (n.params as any)?.update?.sessionUpdate === "agent_message_chunk"
       );
       expect(chunkNotifs).toHaveLength(1);
       const update = (chunkNotifs[0].params as Record<string, unknown>).update as Record<string, unknown>;
@@ -287,7 +287,7 @@ describe("ClaudeCodeSdkAdapter", () => {
       const thoughtNotifs = notifications.filter(
         (n) =>
           n.method === "session/update" &&
-          (n.params as Record<string, unknown>)?.update?.sessionUpdate === "agent_thought_chunk"
+          (n.params as any)?.update?.sessionUpdate === "agent_thought_chunk"
       );
       expect(thoughtNotifs).toHaveLength(1);
     });
@@ -315,7 +315,7 @@ describe("ClaudeCodeSdkAdapter", () => {
       const toolNotifs = notifications.filter(
         (n) =>
           n.method === "session/update" &&
-          (n.params as Record<string, unknown>)?.update?.sessionUpdate === "tool_call"
+          (n.params as any)?.update?.sessionUpdate === "tool_call"
       );
       expect(toolNotifs).toHaveLength(1);
       const update = (toolNotifs[0].params as Record<string, unknown>).update as Record<string, unknown>;
@@ -364,8 +364,8 @@ describe("ClaudeCodeSdkAdapter", () => {
               ],
               stop_reason: "tool_use",
               stop_sequence: null,
-              usage: { input_tokens: 10, output_tokens: 5, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 },
-            },
+              usage: { input_tokens: 10, output_tokens: 5, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 } as any,
+            } as any,
             parent_tool_use_id: null,
             uuid: "uuid-ask-user-tool" as `${string}-${string}-${string}-${string}-${string}`,
             session_id: "sess-1",
@@ -381,7 +381,7 @@ describe("ClaudeCodeSdkAdapter", () => {
             result: "Done!",
             stop_reason: "end_turn",
             total_cost_usd: 0.001,
-            usage: { input_tokens: 10, output_tokens: 20, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 },
+            usage: { input_tokens: 10, output_tokens: 20, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 } as any,
             modelUsage: {},
             permission_denials: [],
             uuid: "uuid-ask-user" as `${string}-${string}-${string}-${string}-${string}`,
@@ -402,8 +402,8 @@ describe("ClaudeCodeSdkAdapter", () => {
       const waitingNotif = notifications.find(
         (n) =>
           n.method === "session/update" &&
-          (n.params as Record<string, unknown>)?.update?.sessionUpdate === "tool_call" &&
-          ((n.params as Record<string, unknown>)?.update as Record<string, unknown>)?.title === "AskUserQuestion"
+          (n.params as any)?.update?.sessionUpdate === "tool_call" &&
+          (n.params as any)?.update?.title === "AskUserQuestion"
       );
       expect(waitingNotif).toBeTruthy();
 
@@ -426,8 +426,8 @@ describe("ClaudeCodeSdkAdapter", () => {
       const completedNotif = notifications.find(
         (n) =>
           n.method === "session/update" &&
-          (n.params as Record<string, unknown>)?.update?.sessionUpdate === "tool_call_update" &&
-          ((n.params as Record<string, unknown>)?.update as Record<string, unknown>)?.toolCallId === toolUseId
+          (n.params as any)?.update?.sessionUpdate === "tool_call_update" &&
+          (n.params as any)?.update?.toolCallId === toolUseId
       );
       expect(completedNotif).toBeTruthy();
       expect(((completedNotif!.params as Record<string, unknown>).update as Record<string, unknown>).rawInput).toEqual({
@@ -449,8 +449,8 @@ describe("ClaudeCodeSdkAdapter", () => {
           ],
           stop_reason: "tool_use",
           stop_sequence: null,
-          usage: { input_tokens: 10, output_tokens: 5, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 },
-        },
+          usage: { input_tokens: 10, output_tokens: 5, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 } as any,
+        } as any,
         parent_tool_use_id: null,
         uuid: "uuid-4" as `${string}-${string}-${string}-${string}-${string}`,
         session_id: "sess-1",
@@ -466,7 +466,7 @@ describe("ClaudeCodeSdkAdapter", () => {
       const updateNotifs = notifications.filter(
         (n) =>
           n.method === "session/update" &&
-          (n.params as Record<string, unknown>)?.update?.sessionUpdate === "tool_call_update"
+          (n.params as any)?.update?.sessionUpdate === "tool_call_update"
       );
       expect(updateNotifs).toHaveLength(1);
       const update = (updateNotifs[0].params as Record<string, unknown>).update as Record<string, unknown>;
@@ -505,8 +505,8 @@ describe("ClaudeCodeSdkAdapter", () => {
           ],
           stop_reason: "tool_use",
           stop_sequence: null,
-          usage: { input_tokens: 10, output_tokens: 5, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 },
-        },
+          usage: { input_tokens: 10, output_tokens: 5, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 } as any,
+        } as any,
         parent_tool_use_id: null,
         uuid: "uuid-ask-user-pending" as `${string}-${string}-${string}-${string}-${string}`,
         session_id: "sess-1",
@@ -523,7 +523,7 @@ describe("ClaudeCodeSdkAdapter", () => {
       const updateNotifs = notifications.filter(
         (n) =>
           n.method === "session/update" &&
-          (n.params as Record<string, unknown>)?.update?.sessionUpdate === "tool_call_update"
+          (n.params as any)?.update?.sessionUpdate === "tool_call_update"
       );
       expect(updateNotifs).toHaveLength(0);
     });
@@ -539,7 +539,7 @@ describe("ClaudeCodeSdkAdapter", () => {
         result: "Done!",
         stop_reason: "end_turn",
         total_cost_usd: 0.001,
-        usage: { input_tokens: 10, output_tokens: 20, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 },
+        usage: { input_tokens: 10, output_tokens: 20, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 } as any,
         modelUsage: {},
         permission_denials: [],
         uuid: "uuid-5" as `${string}-${string}-${string}-${string}-${string}`,
@@ -559,7 +559,7 @@ describe("ClaudeCodeSdkAdapter", () => {
       const completeNotifs = notifications.filter(
         (n) =>
           n.method === "session/update" &&
-          (n.params as Record<string, unknown>)?.update?.sessionUpdate === "turn_complete"
+          (n.params as any)?.update?.sessionUpdate === "turn_complete"
       );
       expect(completeNotifs).toHaveLength(1);
     });
@@ -574,7 +574,7 @@ describe("ClaudeCodeSdkAdapter", () => {
         num_turns: 30,
         stop_reason: null,
         total_cost_usd: 0.01,
-        usage: { input_tokens: 100, output_tokens: 200, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 },
+        usage: { input_tokens: 100, output_tokens: 200, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 } as any,
         modelUsage: {},
         permission_denials: [],
         errors: ["Max turns reached"],

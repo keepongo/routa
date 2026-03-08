@@ -29,7 +29,9 @@ NC='\033[0m' # No Color
 
 is_ai_agent() {
   # Check common AI agent environment variables
-  if [[ -n "$CLAUDE_CODE" ]] || \
+  # Note: CLAUDE_CODE_SSE_PORT is set by Augment but doesn't mean we're in AI mode
+  # We need to check for the actual CLAUDE_CODE variable (without suffix)
+  if [[ "$CLAUDE_CODE" == "1" ]] || \
      [[ -n "$ANTHROPIC_AGENT" ]] || \
      [[ -n "$AUGMENT_AGENT" ]] || \
      [[ -n "$CURSOR_AGENT" ]] || \

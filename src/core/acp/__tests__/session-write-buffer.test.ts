@@ -39,9 +39,9 @@ describe("SessionWriteBuffer", () => {
 
   beforeEach(() => {
     vi.useFakeTimers();
-    persistFn = vi.fn().mockResolvedValue(undefined);
+    persistFn = vi.fn<(sessionId: string, history: SessionUpdateNotification[]) => Promise<void>>().mockResolvedValue(undefined);
     buffer = new SessionWriteBuffer({
-      persistFn,
+      persistFn: persistFn as (sessionId: string, history: SessionUpdateNotification[]) => Promise<void>,
       maxBufferSize: 5,
       debounceMs: 1000,
     });

@@ -103,7 +103,7 @@ enum Commands {
         #[arg(long, default_value = "default")]
         workspace_id: String,
         /// Specialist role: CRAFTER, GATE, or DEVELOPER
-        #[arg(long)]
+        #[arg(long, short = 's')]
         specialist: String,
         /// ACP provider (e.g. "opencode")
         #[arg(long)]
