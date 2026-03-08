@@ -21,17 +21,40 @@ Both backends implement **identical REST APIs** for seamless frontend compatibil
 
 ## Pull Request
 
-- When plan to create a PR, should  attach screenshot with Playwright in GitHub PR body 
+- When plan to create a PR, should  attach screenshot with Playwright in GitHub PR body
+- Attach e2e image or video if possible.
 
-## Issue Management
+## Issue Management — Feedback-Driven Loop
 
-- When create GitHub issues, should use `gh issue create` and add `--label "Agent"`, your name in body. 
-- Building an agent is complex, and API or web interactions may fail unexpectedly.  
-Log issues in `issues/` as structured Markdown files (with YAML front-matter) to document **WHAT happened** and **WHY it might happen** — not how to fix it.  
-These files serve as context handoff between agents and humans.
-- Local issues live in `issues/` as Markdown files with YAML front-matter. They serve as
-context handoff between agents (and humans) — focus on **WHAT** and **WHY**, not HOW to resolve.
-- File Naming: `issues/YYYY-MM-DD-short-description.md`
+Building agents is complex — API calls, web interactions, and integrations may fail unexpectedly.
+We use a **feedback-driven loop** to capture, share, and resolve issues systematically:
+
+### 1. **Capture Feedback** (Observe & Record)
+
+- When you encounter a failure or unexpected behavior, **immediately log it** in `docs/issues/` as a structured Markdown file with YAML front-matter
+- File Naming: `docs/issues/YYYY-MM-DD-short-description.md`
+- Document **WHAT happened** and **WHY it might happen** — not HOW to fix it
+- These files serve as **context handoff** between agents and humans
+
+### 2. **Search for Existing Feedback** (Learn from History)
+
+- Before creating a new issue, **always search** `docs/issues/` directory first
+- Someone (agent or human) may have already documented the same problem
+- Reuse existing context to avoid duplicate work and accelerate resolution
+
+### 3. **Escalate to GitHub** (Broadcast & Track)
+- For issues requiring human attention or cross-session tracking, create GitHub issues:
+  ```bash
+  gh issue create --label "Agent" --body "Agent: YourName\n\n[issue details]"
+  ```
+- Link the local issue file in the GitHub issue body for full context
+
+### 4. **Close the Loop** (Resolve & Document)
+
+- When an issue is resolved, update the local issue file with resolution notes
+- Close the GitHub issue if applicable
+- The documented feedback becomes **knowledge** for future agents and humans
+- When some issue was oute call ``
 
 ## Debug
 
