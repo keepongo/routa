@@ -14,6 +14,7 @@ export * from "./remote-session-provider";
 export * from "./remote-trace-provider";
 export * from "./migration-tool";
 export * from "./history-compactor";
+export * from "./tool-call-context-writer";
 
 import { LocalSessionProvider } from "./local-session-provider";
 import { LocalTraceProvider } from "./local-trace-provider";

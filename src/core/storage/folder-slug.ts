@@ -63,3 +63,14 @@ export function getSessionsDir(absolutePath: string): string {
 export function getTracesDir(absolutePath: string): string {
   return `${getProjectStorageDir(absolutePath)}/traces`;
 }
+
+/**
+ * Get the tool calls context directory for a specific session.
+ *
+ * @param absolutePath - The project's absolute path
+ * @param sessionId - The session ID
+ * @returns Path like ~/.routa/projects/{folder-slug}/sessions/{sessionId}/tool-calls
+ */
+export function getToolCallsDir(absolutePath: string, sessionId: string): string {
+  return `${getSessionsDir(absolutePath)}/${sessionId}/tool-calls`;
+}
