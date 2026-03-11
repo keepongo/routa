@@ -442,6 +442,7 @@ export function ChatPanel({
   // Update visible messages when messagesBySession changes
   useEffect(() => {
     if (activeSessionId) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setVisibleMessages(messagesBySession[activeSessionId] ?? []);
     }
   }, [activeSessionId, messagesBySession]);
