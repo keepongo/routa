@@ -38,7 +38,7 @@ async function fetchGitHub(url: string, init: RequestInit): Promise<Response> {
     return await fetch(url, { ...init, signal: controller.signal });
   } catch (error) {
     if (error instanceof Error && error.name === "AbortError") {
-      throw new Error("GitHub request timed out");
+      throw new Error("GitHub request timed out", { cause: error });
     }
     throw error;
   } finally {

@@ -380,7 +380,7 @@ export function validateBranchName(branch: string): BranchValidationResult {
   const trimmed = branch.trim();
 
   // Invalid characters
-  const invalidChars = /[\s~^:?*\[\]\\]/;
+  const invalidChars = /[\s~^:?*[\]\\]/;
   if (invalidChars.test(trimmed)) {
     return {
       valid: false,
@@ -418,7 +418,7 @@ export function validateBranchName(branch: string): BranchValidationResult {
 export function sanitizeBranchName(branch: string): string {
   return branch
     .trim()
-    .replace(/[\s~^:?*\[\]\\]/g, "-")
+    .replace(/[\s~^:?*[\]\\]/g, "-")
     .replace(/\.{2,}/g, "-")
     .replace(/\/{2,}/g, "/")
     .replace(/^\/|\/$/g, "")
