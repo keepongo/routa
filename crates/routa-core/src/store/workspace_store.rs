@@ -177,7 +177,11 @@ mod tests {
         let store = setup().await;
         let mut metadata = HashMap::new();
         metadata.insert("env".to_string(), "dev".to_string());
-        let ws = Workspace::new("ws-1".to_string(), "Workspace 1".to_string(), Some(metadata));
+        let ws = Workspace::new(
+            "ws-1".to_string(),
+            "Workspace 1".to_string(),
+            Some(metadata),
+        );
 
         store.save(&ws).await.expect("save should succeed");
 

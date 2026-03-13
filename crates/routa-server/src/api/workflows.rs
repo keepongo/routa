@@ -1,8 +1,4 @@
-use axum::{
-    extract::Path,
-    routing::get,
-    Json, Router,
-};
+use axum::{extract::Path, routing::get, Json, Router};
 use serde::Deserialize;
 use std::path::PathBuf;
 
@@ -35,19 +31,21 @@ fn flows_dir() -> Result<PathBuf, ServerError> {
 
 fn parse_workflow(id: &str, content: &str) -> serde_json::Value {
     let parsed: serde_yaml::Value = serde_yaml::from_str(content).unwrap_or_default();
-    let name = parsed.get("name")
-        .and_then(|v| v.as_str())
-        .unwrap_or(id);
-    let description = parsed.get("description")
+    let name = parsed.get("name").and_then(|v| v.as_str()).unwrap_or(id);
+    let description = parsed
+        .get("description")
         .and_then(|v| v.as_str())
         .unwrap_or("");
-    let version = parsed.get("version")
+    let version = parsed
+        .get("version")
         .and_then(|v| v.as_str())
         .unwrap_or("1.0");
-    let trigger = parsed.get("trigger")
+    let trigger = parsed
+        .get("trigger")
         .map(|v| serde_json::to_value(v).unwrap_or_default())
         .unwrap_or(serde_json::Value::Null);
-    let steps = parsed.get("steps")
+    let steps = parsed
+        .get("steps")
         .map(|v| serde_json::to_value(v).unwrap_or_default())
         .unwrap_or(serde_json::json!([]));
 
@@ -76,7 +74,8 @@ async fn list_workflows() -> Result<Json<serde_json::Value>, ServerError> {
         if ext != "yaml" && ext != "yml" {
             continue;
         }
-        let id = path.file_stem()
+        let id = path
+            .file_stem()
             .and_then(|s| s.to_str())
             .unwrap_or("")
             .to_string();
@@ -116,7 +115,8 @@ async fn create_workflow(
         .map_err(|e| ServerError::BadRequest(format!("Invalid YAML: {}", e)))?;
 
     let has_name = parsed.get("name").and_then(|v| v.as_str()).is_some();
-    let has_steps = parsed.get("steps")
+    let has_steps = parsed
+        .get("steps")
         .and_then(|v| v.as_sequence())
         .map(|s| !s.is_empty())
         .unwrap_or(false);
@@ -131,22 +131,24 @@ async fn create_workflow(
     let file_path = dir.join(format!("{}.yaml", body.id));
 
     if file_path.exists() {
-        return Err(ServerError::Conflict(
-            format!("Workflow with id \"{}\" already exists", body.id),
-        ));
+        return Err(ServerError::Conflict(format!(
+            "Workflow with id \"{}\" already exists",
+            body.id
+        )));
     }
 
     std::fs::write(&file_path, &body.yaml_content)
         .map_err(|e| ServerError::Internal(format!("Failed to write workflow: {}", e)))?;
 
     let workflow = parse_workflow(&body.id, &body.yaml_content);
-    Ok((axum::http::StatusCode::CREATED, Json(serde_json::json!({ "workflow": workflow }))))
+    Ok((
+        axum::http::StatusCode::CREATED,
+        Json(serde_json::json!({ "workflow": workflow })),
+    ))
 }
 
 /// GET /api/workflows/{id} — Get a specific workflow.
-async fn get_workflow(
-    Path(id): Path<String>,
-) -> Result<Json<serde_json::Value>, ServerError> {
+async fn get_workflow(Path(id): Path<String>) -> Result<Json<serde_json::Value>, ServerError> {
     let dir = flows_dir()?;
     let file_path = dir.join(format!("{}.yaml", id));
 
@@ -157,7 +159,9 @@ async fn get_workflow(
     let content = std::fs::read_to_string(&file_path)
         .map_err(|e| ServerError::Internal(format!("Failed to read workflow: {}", e)))?;
 
-    Ok(Json(serde_json::json!({ "workflow": parse_workflow(&id, &content) })))
+    Ok(Json(
+        serde_json::json!({ "workflow": parse_workflow(&id, &content) }),
+    ))
 }
 
 #[derive(Debug, Deserialize)]
@@ -183,7 +187,8 @@ async fn update_workflow(
         .map_err(|e| ServerError::BadRequest(format!("Invalid YAML: {}", e)))?;
 
     let has_name = parsed.get("name").and_then(|v| v.as_str()).is_some();
-    let has_steps = parsed.get("steps")
+    let has_steps = parsed
+        .get("steps")
         .and_then(|v| v.as_sequence())
         .map(|s| !s.is_empty())
         .unwrap_or(false);
@@ -197,13 +202,13 @@ async fn update_workflow(
     std::fs::write(&file_path, &body.yaml_content)
         .map_err(|e| ServerError::Internal(format!("Failed to write workflow: {}", e)))?;
 
-    Ok(Json(serde_json::json!({ "workflow": parse_workflow(&id, &body.yaml_content) })))
+    Ok(Json(
+        serde_json::json!({ "workflow": parse_workflow(&id, &body.yaml_content) }),
+    ))
 }
 
 /// DELETE /api/workflows/{id} — Delete a workflow YAML file.
-async fn delete_workflow(
-    Path(id): Path<String>,
-) -> Result<Json<serde_json::Value>, ServerError> {
+async fn delete_workflow(Path(id): Path<String>) -> Result<Json<serde_json::Value>, ServerError> {
     let dir = flows_dir()?;
     let file_path = dir.join(format!("{}.yaml", id));
 

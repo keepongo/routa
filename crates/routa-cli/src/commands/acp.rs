@@ -176,16 +176,14 @@ pub async fn runtime_status(state: &AppState) -> Result<(), String> {
     let rm = &state.acp_runtime_manager;
     let platform = current_platform();
 
-    let check = |rt: RuntimeType| {
-        async move {
-            let managed = rm.get_managed_runtime(&rt).await;
-            let system = rm.get_system_runtime(&rt);
-            serde_json::json!({
-                "available": managed.is_some() || system.is_some(),
-                "managed": managed.as_ref().map(|i| i.path.to_string_lossy().to_string()),
-                "system":  system.as_ref().map(|i| i.path.to_string_lossy().to_string()),
-            })
-        }
+    let check = |rt: RuntimeType| async move {
+        let managed = rm.get_managed_runtime(&rt).await;
+        let system = rm.get_system_runtime(&rt);
+        serde_json::json!({
+            "available": managed.is_some() || system.is_some(),
+            "managed": managed.as_ref().map(|i| i.path.to_string_lossy().to_string()),
+            "system":  system.as_ref().map(|i| i.path.to_string_lossy().to_string()),
+        })
     };
 
     let (node, npx, uv, uvx) = tokio::join!(

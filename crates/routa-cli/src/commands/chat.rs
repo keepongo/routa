@@ -66,7 +66,10 @@ pub async fn run(
     println!("╔══════════════════════════════════════════════════════════╗");
     println!("║  Routa CLI Chat                                         ║");
     println!("╠══════════════════════════════════════════════════════════╣");
-    println!("║  Agent : {:<48} ║", format!("{} ({})", &agent_id[..8], role));
+    println!(
+        "║  Agent : {:<48} ║",
+        format!("{} ({})", &agent_id[..8], role)
+    );
     println!("║  Workspace : {:<44} ║", workspace_id);
     println!("║  Provider  : {:<44} ║", provider);
     println!("╚══════════════════════════════════════════════════════════╝");
@@ -347,10 +350,7 @@ fn pick_specialist_interactive(
 ) -> Option<SpecialistConfig> {
     let filtered: Vec<&SpecialistConfig> = if let Some(p) = prefix {
         let lower = p.to_lowercase();
-        let exact: Vec<_> = specialists
-            .iter()
-            .filter(|s| s.id == lower)
-            .collect();
+        let exact: Vec<_> = specialists.iter().filter(|s| s.id == lower).collect();
         if !exact.is_empty() {
             return exact.into_iter().next().cloned();
         }

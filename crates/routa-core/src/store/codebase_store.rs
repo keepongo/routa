@@ -108,10 +108,7 @@ impl CodebaseStore {
                     return Ok(());
                 }
 
-                let sql = format!(
-                    "UPDATE codebases SET {} WHERE id = ?",
-                    updates.join(", ")
-                );
+                let sql = format!("UPDATE codebases SET {} WHERE id = ?", updates.join(", "));
                 params.push(Box::new(id.clone()));
 
                 let params_refs: Vec<&dyn rusqlite::ToSql> =
@@ -251,13 +248,7 @@ mod tests {
     #[tokio::test]
     async fn save_get_and_find_by_repo_path_roundtrip() {
         let store = setup().await;
-        let cb = make_codebase(
-            "cb-1",
-            "/tmp/repo-1",
-            Some("main"),
-            Some("Primary"),
-            false,
-        );
+        let cb = make_codebase("cb-1", "/tmp/repo-1", Some("main"), Some("Primary"), false);
         store.save(&cb).await.expect("save should succeed");
 
         let loaded = store
@@ -309,7 +300,10 @@ mod tests {
         let first = make_codebase("cb-3", "/tmp/repo-3", None, None, true);
         let second = make_codebase("cb-4", "/tmp/repo-4", None, None, false);
         store.save(&first).await.expect("save first should succeed");
-        store.save(&second).await.expect("save second should succeed");
+        store
+            .save(&second)
+            .await
+            .expect("save second should succeed");
 
         store
             .set_default("ws-codebase", "cb-4")
@@ -345,6 +339,10 @@ mod tests {
         assert_eq!(list[0].id, "cb-5");
 
         store.delete("cb-5").await.expect("delete should succeed");
-        assert!(store.get("cb-5").await.expect("get should succeed").is_none());
+        assert!(store
+            .get("cb-5")
+            .await
+            .expect("get should succeed")
+            .is_none());
     }
 }

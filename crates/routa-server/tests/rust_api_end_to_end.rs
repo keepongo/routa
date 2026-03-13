@@ -68,17 +68,11 @@ impl Drop for ApiFixture {
 }
 
 fn random_db_path() -> PathBuf {
-    std::env::temp_dir().join(format!(
-        "routa-server-api-{}.db",
-        uuid::Uuid::new_v4()
-    ))
+    std::env::temp_dir().join(format!("routa-server-api-{}.db", uuid::Uuid::new_v4()))
 }
 
 fn random_repo_path() -> PathBuf {
-    std::env::temp_dir().join(format!(
-        "routa-server-repo-{}",
-        uuid::Uuid::new_v4()
-    ))
+    std::env::temp_dir().join(format!("routa-server-repo-{}", uuid::Uuid::new_v4()))
 }
 
 fn write_repo_file(path: &PathBuf, file_name: &str, content: &str) {
@@ -109,10 +103,7 @@ async fn api_workspace_and_note_flow() {
         .expect("list workspaces");
     assert_eq!(list_response.status(), StatusCode::OK);
 
-    let list_json: Value = list_response
-        .json()
-        .await
-        .expect("decode workspace list");
+    let list_json: Value = list_response.json().await.expect("decode workspace list");
     let has_default = list_json
         .get("workspaces")
         .and_then(Value::as_array)
@@ -180,14 +171,15 @@ async fn api_workspace_and_note_flow() {
         .expect("create note");
     assert_eq!(note_response.status(), StatusCode::OK);
 
-    let note_json: Value = note_response.json().await.expect("decode create note response");
+    let note_json: Value = note_response
+        .json()
+        .await
+        .expect("decode create note response");
     let note_id = note_json["note"]["id"].as_str().expect("note id");
 
     let list_notes = fixture
         .client
-        .get(fixture.endpoint(&format!(
-            "/api/notes?workspaceId={workspace_id}"
-        )))
+        .get(fixture.endpoint(&format!("/api/notes?workspaceId={workspace_id}")))
         .send()
         .await
         .expect("list workspace notes");
@@ -209,9 +201,7 @@ async fn api_workspace_and_note_flow() {
 
     let archived_workspace = fixture
         .client
-        .post(fixture.endpoint(&format!(
-            "/api/workspaces/{workspace_id}/archive"
-        )))
+        .post(fixture.endpoint(&format!("/api/workspaces/{workspace_id}/archive")))
         .send()
         .await
         .expect("archive workspace");
@@ -279,7 +269,10 @@ async fn api_task_flow_with_validation() {
         .expect("create task");
     assert_eq!(create_task.status(), StatusCode::CREATED);
 
-    let created_task: Value = create_task.json().await.expect("decode task create response");
+    let created_task: Value = create_task
+        .json()
+        .await
+        .expect("decode task create response");
     let task_id = created_task["task"]["id"].as_str().expect("task id");
 
     let get_task = fixture
@@ -318,10 +311,7 @@ async fn api_task_flow_with_validation() {
         .await
         .expect("invalid task transition");
     assert_eq!(conflict.status(), StatusCode::BAD_REQUEST);
-    let conflict_json: Value = conflict
-        .json()
-        .await
-        .expect("decode conflict response");
+    let conflict_json: Value = conflict.json().await.expect("decode conflict response");
     assert!(json_has_error(
         &conflict_json,
         "must describe the same workflow state"
@@ -413,7 +403,9 @@ async fn api_codebase_and_file_search_flow() {
         .json()
         .await
         .expect("decode codebase response");
-    let codebase_id = codebase_json["codebase"]["id"].as_str().expect("codebase id");
+    let codebase_id = codebase_json["codebase"]["id"]
+        .as_str()
+        .expect("codebase id");
 
     let duplicate_codebase = fixture
         .client
@@ -429,9 +421,7 @@ async fn api_codebase_and_file_search_flow() {
 
     let update_codebase = fixture
         .client
-        .patch(fixture.endpoint(&format!(
-            "/api/codebases/{codebase_id}"
-        )))
+        .patch(fixture.endpoint(&format!("/api/codebases/{codebase_id}")))
         .json(&json!({
             "branch":"main"
         }))
@@ -442,9 +432,7 @@ async fn api_codebase_and_file_search_flow() {
 
     let default_codebase = fixture
         .client
-        .post(fixture.endpoint(&format!(
-            "/api/codebases/{codebase_id}/default"
-        )))
+        .post(fixture.endpoint(&format!("/api/codebases/{codebase_id}/default")))
         .send()
         .await
         .expect("set default codebase");
@@ -454,7 +442,9 @@ async fn api_codebase_and_file_search_flow() {
         .await
         .expect("decode default codebase response");
     assert_eq!(
-        default_json["codebase"]["isDefault"].as_bool().expect("isDefault"),
+        default_json["codebase"]["isDefault"]
+            .as_bool()
+            .expect("isDefault"),
         true
     );
 
@@ -528,10 +518,7 @@ async fn api_agent_flow_with_validation() {
         .expect("create agent");
     assert_eq!(created_agent.status(), StatusCode::OK);
 
-    let created: Value = created_agent
-        .json()
-        .await
-        .expect("decode created agent");
+    let created: Value = created_agent.json().await.expect("decode created agent");
     let agent_id = created["agent"]["id"]
         .as_str()
         .expect("agent id should exist");
@@ -547,10 +534,7 @@ async fn api_agent_flow_with_validation() {
         .json()
         .await
         .expect("decode get by path response");
-    assert_eq!(
-        get_by_path_json["id"].as_str().expect("agent id"),
-        agent_id
-    );
+    assert_eq!(get_by_path_json["id"].as_str().expect("agent id"), agent_id);
     assert_eq!(
         get_by_path_json["name"].as_str().expect("agent name"),
         "AI Fitness Verifier"
@@ -567,11 +551,11 @@ async fn api_agent_flow_with_validation() {
         .await
         .expect("get by query");
     assert_eq!(get_by_query.status(), StatusCode::OK);
-    let get_by_query_json: Value = get_by_query
-        .json()
-        .await
-        .expect("decode query response");
-    assert_eq!(get_by_query_json["id"].as_str().expect("agent id"), agent_id);
+    let get_by_query_json: Value = get_by_query.json().await.expect("decode query response");
+    assert_eq!(
+        get_by_query_json["id"].as_str().expect("agent id"),
+        agent_id
+    );
 
     let status_update = fixture
         .client
@@ -585,7 +569,10 @@ async fn api_agent_flow_with_validation() {
         .json()
         .await
         .expect("decode status update response");
-    assert_eq!(status_update_json["updated"].as_bool().unwrap_or(false), true);
+    assert_eq!(
+        status_update_json["updated"].as_bool().unwrap_or(false),
+        true
+    );
 
     let get_after_update = fixture
         .client
@@ -593,10 +580,7 @@ async fn api_agent_flow_with_validation() {
         .send()
         .await
         .expect("get updated agent");
-    let updated_agent: Value = get_after_update
-        .json()
-        .await
-        .expect("decode updated agent");
+    let updated_agent: Value = get_after_update.json().await.expect("decode updated agent");
     assert_eq!(
         updated_agent["status"].as_str().expect("agent status"),
         "ACTIVE"
@@ -609,10 +593,7 @@ async fn api_agent_flow_with_validation() {
         .await
         .expect("list active agents");
     assert_eq!(list_active.status(), StatusCode::OK);
-    let list_active_json: Value = list_active
-        .json()
-        .await
-        .expect("decode active agents");
+    let list_active_json: Value = list_active.json().await.expect("decode active agents");
     assert!(
         list_active_json
             .get("agents")
@@ -639,10 +620,7 @@ async fn api_agent_flow_with_validation() {
         .await
         .expect("delete agent");
     assert_eq!(delete_agent.status(), StatusCode::OK);
-    let delete_json: Value = delete_agent
-        .json()
-        .await
-        .expect("decode delete response");
+    let delete_json: Value = delete_agent.json().await.expect("decode delete response");
     assert_eq!(delete_json["deleted"].as_bool().unwrap_or(false), true);
 
     let after_delete = fixture
@@ -673,16 +651,20 @@ async fn api_agent_flow_with_validation() {
         .await
         .expect("list agents again");
     assert_eq!(final_list.status(), StatusCode::OK);
-    let final_json: Value = final_list
-        .json()
-        .await
-        .expect("decode final agent list");
+    let final_json: Value = final_list.json().await.expect("decode final agent list");
     let final_count = final_json
         .get("agents")
         .and_then(Value::as_array)
         .expect("final agents array")
         .len();
-    assert!(final_count >= initial.get("agents").and_then(Value::as_array).map(|v| v.len()).unwrap_or(0));
+    assert!(
+        final_count
+            >= initial
+                .get("agents")
+                .and_then(Value::as_array)
+                .map(|v| v.len())
+                .unwrap_or(0)
+    );
 }
 
 #[tokio::test]
@@ -696,11 +678,11 @@ async fn api_session_contract_with_negative_paths() {
         .await
         .expect("list sessions");
     assert_eq!(list_sessions.status(), StatusCode::OK);
-    let list_json: Value = list_sessions
-        .json()
-        .await
-        .expect("decode session list");
-    assert!(list_json.get("sessions").and_then(Value::as_array).is_some());
+    let list_json: Value = list_sessions.json().await.expect("decode session list");
+    assert!(list_json
+        .get("sessions")
+        .and_then(Value::as_array)
+        .is_some());
 
     let fake_session = uuid::Uuid::new_v4().to_string();
 
@@ -711,11 +693,11 @@ async fn api_session_contract_with_negative_paths() {
         .await
         .expect("get missing session history");
     assert_eq!(history.status(), StatusCode::OK);
-    let history_json: Value = history
-        .json()
-        .await
-        .expect("decode session history");
-    assert!(history_json.get("history").and_then(Value::as_array).is_some());
+    let history_json: Value = history.json().await.expect("decode session history");
+    assert!(history_json
+        .get("history")
+        .and_then(Value::as_array)
+        .is_some());
 
     let context = fixture
         .client
@@ -814,18 +796,13 @@ async fn api_health_contract() {
         .expect("health check");
     assert_eq!(health.status(), StatusCode::OK);
 
-    let payload: Value = health
-        .json()
-        .await
-        .expect("decode health response");
+    let payload: Value = health.json().await.expect("decode health response");
 
     assert_eq!(payload["status"].as_str().expect("status"), "ok");
     assert!(payload["server"]
         .as_str()
         .is_some_and(|server| server == "routa-server"));
-    let timestamp = payload["timestamp"]
-        .as_str()
-        .expect("timestamp");
+    let timestamp = payload["timestamp"].as_str().expect("timestamp");
     chrono::DateTime::parse_from_rfc3339(timestamp).expect("timestamp format");
     assert!(payload
         .get("version")
@@ -881,10 +858,7 @@ async fn api_contract_negative_filters() {
         .json()
         .await
         .expect("decode invalid task status response");
-    assert!(json_has_error(
-        &invalid_task_status_json,
-        "Invalid status"
-    ));
+    assert!(json_has_error(&invalid_task_status_json, "Invalid status"));
 
     let fake_session = uuid::Uuid::new_v4().to_string();
 

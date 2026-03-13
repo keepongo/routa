@@ -89,25 +89,13 @@ impl TuiRenderer {
 
                 match status {
                     "completed" => {
-                        println!(
-                            "  {} {}",
-                            style("✔").green(),
-                            style(&name).dim()
-                        );
+                        println!("  {} {}", style("✔").green(), style(&name).dim());
                     }
                     "failed" => {
-                        println!(
-                            "  {} {}",
-                            style("✘").red(),
-                            style(&name).dim()
-                        );
+                        println!("  {} {}", style("✘").red(), style(&name).dim());
                     }
                     _ => {
-                        print!(
-                            "  {} {} …",
-                            style("⠿").yellow(),
-                            style(&name).dim()
-                        );
+                        print!("  {} {} …", style("⠿").yellow(), style(&name).dim());
                         std::io::stdout().flush().ok();
                         self.active_tool = Some((name, Instant::now()));
                         self.at_line_start = false;

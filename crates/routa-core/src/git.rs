@@ -749,9 +749,18 @@ mod tests {
 
         let skill_paths = [
             temp.path().join("skills").join("a").join("SKILL.md"),
-            temp.path().join(".agents/skills").join("b").join("SKILL.md"),
-            temp.path().join(".opencode/skills").join("c").join("SKILL.md"),
-            temp.path().join(".claude/skills").join("d").join("SKILL.md"),
+            temp.path()
+                .join(".agents/skills")
+                .join("b")
+                .join("SKILL.md"),
+            temp.path()
+                .join(".opencode/skills")
+                .join("c")
+                .join("SKILL.md"),
+            temp.path()
+                .join(".claude/skills")
+                .join("d")
+                .join("SKILL.md"),
             temp.path().join("SKILL.md"),
         ];
 

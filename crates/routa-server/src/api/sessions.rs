@@ -414,10 +414,7 @@ mod tests {
         let merged = consolidate_message_history(notifications);
 
         assert_eq!(merged.len(), 2);
-        assert_eq!(
-            merged[0]["sessionId"].as_str(),
-            Some("s1")
-        );
+        assert_eq!(merged[0]["sessionId"].as_str(), Some("s1"));
         assert_eq!(
             merged[0]["update"]["sessionUpdate"].as_str(),
             Some("agent_message")

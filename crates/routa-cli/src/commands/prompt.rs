@@ -232,8 +232,6 @@ pub async fn run(
     Ok(())
 }
 
-
-
 /// Print a summary of agents and tasks after the session completes.
 pub(crate) async fn print_session_summary(router: &RpcRouter, workspace_id: &str) {
     println!("╔══════════════════════════════════════════════════════════╗");
