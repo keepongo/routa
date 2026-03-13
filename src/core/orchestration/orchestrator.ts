@@ -39,6 +39,7 @@ import {
 import { getProviderAdapter } from "../acp/provider-adapter";
 import { AgentEventBridge, makeStartedEvent } from "../acp/agent-event-bridge";
 import type { WorkspaceAgentEvent } from "../acp/agent-event-bridge";
+import { LifecycleNotifier } from "../acp/lifecycle-notifier";
 
 export interface DelegateWithSpawnParams {
   /** Task ID to delegate */
@@ -437,11 +438,26 @@ export class RoutaOrchestrator {
     workspaceId?: string,
   ): Promise<void> {
     const isClaudeCode = provider === "claude";
+    const isClaudeCodeSdk = provider === "claude-code-sdk";
 
     // Create AgentEventBridge for this child agent
     const bridge = new AgentEventBridge(sessionId);
     this.childAgentBridges.set(agentId, bridge);
     this.dispatchChildAgentEvent(agentId, makeStartedEvent(sessionId, provider));
+
+    // Build a LifecycleNotifier so the child auto-notifies its parent on session end
+    const agent = await this.system.agentStore.get(agentId);
+    const lifecycleNotifier = new LifecycleNotifier(
+      this.system.eventBus,
+      this.system.agentStore,
+      this.system.conversationStore,
+      {
+        agentId,
+        workspaceId: workspaceId ?? "default",
+        parentId: agent?.parentId,
+        agentName: agent?.name,
+      }
+    );
 
     const notificationHandler: NotificationHandler = (msg) => {
       if (msg.method === "session/update" && msg.params) {
@@ -536,7 +552,30 @@ export class RoutaOrchestrator {
             this.handleChildError(agentId, err);
           });
       }
-    } else {
+    } else if (isClaudeCodeSdk) {
+      acpSessionId = await this.processManager.createClaudeCodeSdkSession(
+        sessionId,
+        cwd,
+        notificationHandler,
+        { provider: "claude-code-sdk" },
+        lifecycleNotifier,
+      );
+
+      // Send the initial prompt via the SDK adapter
+      const sdkAdapter = this.processManager.getClaudeCodeSdkAdapter(sessionId);
+      if (sdkAdapter) {
+        (async () => {
+          try {
+            for await (const _ of sdkAdapter.promptStream(initialPrompt, acpSessionId)) {
+              // notifications are forwarded via notificationHandler
+            }
+            this.autoReportIfNeeded(agentId);
+          } catch (err) {
+            console.error(`[Orchestrator] Claude Code SDK child agent ${agentId} failed:`, err);
+            this.handleChildError(agentId, err);
+          }
+        })();
+      }
       acpSessionId = await this.processManager.createSession(
         sessionId,
         cwd,
