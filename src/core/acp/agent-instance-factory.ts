@@ -25,6 +25,7 @@ import {
 } from "../orchestration/specialist-prompts";
 import type { NotificationHandler } from "./processer";
 import { type AgentRole } from "../models/agent";
+import type { LifecycleNotifier } from "./lifecycle-notifier";
 
 // ─── Agent Instance Config ─────────────────────────────────────────────────
 
@@ -165,6 +166,7 @@ export class AgentInstanceFactory {
     cwd: string,
     onNotification: NotificationHandler,
     config?: AgentInstanceConfig,
+    lifecycleNotifier?: LifecycleNotifier,
   ): { adapter: ClaudeCodeSdkAdapter; resolved: ResolvedAgentConfig } {
     const resolved = config
       ? AgentInstanceFactory.resolveConfig(config)
@@ -175,6 +177,7 @@ export class AgentInstanceFactory {
       maxTurns: resolved.maxTurns,
       baseUrl: resolved.baseUrl,
       apiKey: resolved.apiKey,
+      lifecycleNotifier,
     });
 
     console.log(

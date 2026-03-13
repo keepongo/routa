@@ -236,6 +236,29 @@ const getAgentStatusParams = z.object({
   agentId: z.string().describe("Agent ID to query"),
 });
 
+const requestPermissionParams = z.object({
+  coordinatorAgentId: z.string().describe("Coordinator agent ID to request permission from"),
+  type: z.string().describe("Permission type: file_edit | dependency_install | destructive_op | clarification"),
+  description: z.string().describe("What you want to do and why"),
+  tool: z.string().optional().describe("Tool name involved, if any"),
+  urgency: z.enum(["low", "normal", "high"]).optional().describe("Urgency level (default: normal)"),
+});
+
+const respondToPermissionParams = z.object({
+  requestId: z.string().describe("Permission request ID to respond to"),
+  decision: z.enum(["allow", "deny"]).describe("Whether to allow or deny the request"),
+  feedback: z.string().optional().describe("Optional feedback or constraints for the requester"),
+});
+
+const requestShutdownParams = z.object({
+  reason: z.string().optional().describe("Reason for shutting down child agents"),
+  timeoutMs: z.number().optional().describe("Timeout in ms before force-kill (default: 30000)"),
+});
+
+const acknowledgeShutdownParams = z.object({
+  summary: z.string().optional().describe("Summary of work completed before shutdown"),
+});
+
 /**
  * Create agent management tools that bridge to existing AgentTools.
  * These allow the workspace agent to coordinate other ACP agents.
@@ -302,6 +325,73 @@ export function createAgentManagementTools(
       execute: async ({ agentId: targetAgentId }: z.infer<typeof getAgentStatusParams>) => {
         const result = await agentTools.getAgentStatus(targetAgentId);
         return result.data;
+      },
+    }),
+
+    request_permission: tool({
+      description: "Request runtime permission from the coordinator agent before performing a sensitive operation (file edits outside scope, destructive commands, dependency installs, etc.).",
+      inputSchema: requestPermissionParams,
+      execute: async ({ coordinatorAgentId, type, description, tool: toolName, urgency }: z.infer<typeof requestPermissionParams>) => {
+        const result = await agentTools.requestPermission({
+          requestingAgentId: agentId,
+          coordinatorAgentId,
+          workspaceId,
+          type,
+          description,
+          tool: toolName,
+          urgency,
+        });
+        return result.data ?? { error: result.error };
+      },
+    }),
+
+    respond_to_permission: tool({
+      description: "Respond to a pending permission request from a worker agent. Use list_pending_permissions to see what's waiting.",
+      inputSchema: respondToPermissionParams,
+      execute: async ({ requestId, decision, feedback }: z.infer<typeof respondToPermissionParams>) => {
+        const result = await agentTools.respondToPermission({
+          requestId,
+          coordinatorAgentId: agentId,
+          decision,
+          feedback,
+        });
+        return result.data ?? { error: result.error };
+      },
+    }),
+
+    list_pending_permissions: tool({
+      description: "List all pending permission requests from worker agents waiting for coordinator approval.",
+      inputSchema: z.object({}),
+      execute: async () => {
+        const result = await agentTools.listPendingPermissions(agentId);
+        return result.data;
+      },
+    }),
+
+    request_shutdown: tool({
+      description: "Initiate graceful shutdown of all active child agents. Each child will finish its current operation and call acknowledge_shutdown.",
+      inputSchema: requestShutdownParams,
+      execute: async ({ reason, timeoutMs }: z.infer<typeof requestShutdownParams>) => {
+        const result = await agentTools.requestShutdown({
+          coordinatorAgentId: agentId,
+          workspaceId,
+          reason,
+          timeoutMs,
+        });
+        return result.data ?? { error: result.error };
+      },
+    }),
+
+    acknowledge_shutdown: tool({
+      description: "Acknowledge a shutdown request from the coordinator. Call this after finishing your current operation and saving state.",
+      inputSchema: acknowledgeShutdownParams,
+      execute: async ({ summary }: z.infer<typeof acknowledgeShutdownParams>) => {
+        const result = await agentTools.acknowledgeShutdown({
+          agentId,
+          workspaceId,
+          summary,
+        });
+        return result.data ?? { error: result.error };
       },
     }),
   };

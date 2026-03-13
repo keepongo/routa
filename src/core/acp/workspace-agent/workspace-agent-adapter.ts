@@ -238,10 +238,15 @@ export class WorkspaceAgentAdapter {
       });
       this.onNotification(completeNotif);
       yield formatSse(completeNotif);
+
+      // Auto-notify lifecycle: agent is idle after completing its turn
+      if (this.lifecycleNotifier) {
+        await this.lifecycleNotifier.notifyIdle(result.text?.slice(0, 200));
+      }
     } catch (error) {
       stateMachine.transition("FAILED");
+      const msg = error instanceof Error ? error.message : String(error);
       if (!this.abortController?.signal.aborted) {
-        const msg = error instanceof Error ? error.message : String(error);
         console.error("[WorkspaceAgentAdapter] promptStream failed:", msg);
         const errNotif = createNotification("session/update", {
           sessionId,
@@ -250,6 +255,10 @@ export class WorkspaceAgentAdapter {
         });
         this.onNotification(errNotif);
         yield formatSse(errNotif);
+      }
+      // Auto-notify lifecycle: agent failed
+      if (this.lifecycleNotifier && !this.abortController?.signal.aborted) {
+        await this.lifecycleNotifier.notifyFailed(msg);
       }
       throw error;
     } finally {

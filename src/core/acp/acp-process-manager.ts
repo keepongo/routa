@@ -12,6 +12,7 @@ import {getHttpSessionStore} from "@/core/acp/http-session-store";
 import {AgentInstanceFactory, getAgentInstanceManager, type AgentInstanceConfig} from "@/core/acp/agent-instance-factory";
 import {getDatabaseDriver, getPostgresDatabase} from "@/core/db/index";
 import {PgAcpSessionStore} from "@/core/db/pg-acp-session-store";
+import type { LifecycleNotifier } from "@/core/acp/lifecycle-notifier";
 
 /**
  * A managed Claude Code process (separate from standard ACP).
@@ -369,6 +370,7 @@ export class AcpProcessManager {
         cwd: string,
         onNotification: NotificationHandler,
         instanceConfig?: AgentInstanceConfig,
+        lifecycleNotifier?: LifecycleNotifier,
     ): Promise<string> {
         console.log(`[AcpProcessManager] Using Claude Code SDK adapter for serverless environment`);
 
@@ -376,6 +378,7 @@ export class AcpProcessManager {
             cwd,
             onNotification,
             instanceConfig,
+            lifecycleNotifier,
         );
         await adapter.connect();
         const acpSessionId = await adapter.createSession(`Routa Session ${sessionId}`);

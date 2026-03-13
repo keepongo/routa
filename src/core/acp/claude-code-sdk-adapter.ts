@@ -27,6 +27,7 @@ import { isServerlessEnvironment } from "@/core/acp/api-based-providers";
 import { query } from "@anthropic-ai/claude-agent-sdk";
 import type { SDKMessage } from "@anthropic-ai/claude-agent-sdk";
 import { join } from "path";
+import type { LifecycleNotifier } from "@/core/acp/lifecycle-notifier";
 
 interface PendingUserInputRequest {
   sessionId: string;
@@ -128,10 +129,12 @@ export class ClaudeCodeSdkAdapter {
   /** Completed AskUserQuestion responses keyed by tool call ID. */
   private completedUserInputResponses = new Map<string, Record<string, unknown>>();
 
+  private lifecycleNotifier?: LifecycleNotifier;
+
   constructor(
     cwd: string,
     onNotification: NotificationHandler,
-    options?: { model?: string; maxTurns?: number; baseUrl?: string; apiKey?: string }
+    options?: { model?: string; maxTurns?: number; baseUrl?: string; apiKey?: string; lifecycleNotifier?: LifecycleNotifier }
   ) {
     this.cwd = cwd;
     this.onNotification = onNotification;
@@ -139,6 +142,7 @@ export class ClaudeCodeSdkAdapter {
     this._maxTurnsOverride = options?.maxTurns;
     this._baseUrlOverride = options?.baseUrl;
     this._apiKeyOverride = options?.apiKey;
+    this.lifecycleNotifier = options?.lifecycleNotifier;
   }
 
   get alive(): boolean {
@@ -362,9 +366,13 @@ export class ClaudeCodeSdkAdapter {
       this.onNotification(completeNotification);
       yield formatSseEvent(completeNotification);
 
+      // Auto-notify lifecycle: agent is idle after completing its turn
+      if (this.lifecycleNotifier) {
+        await this.lifecycleNotifier.notifyIdle();
+      }
     } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
       if (!this.abortController?.signal.aborted) {
-        const errorMessage = error instanceof Error ? error.message : String(error);
         console.error("[ClaudeCodeSdkAdapter] promptStream failed:", errorMessage);
         const errorNotification = createNotification("session/update", {
           sessionId,
@@ -373,6 +381,10 @@ export class ClaudeCodeSdkAdapter {
         });
         this.onNotification(errorNotification);
         yield formatSseEvent(errorNotification);
+        // Auto-notify lifecycle: agent failed
+        if (this.lifecycleNotifier) {
+          await this.lifecycleNotifier.notifyFailed(errorMessage);
+        }
       }
       throw error;
     } finally {
