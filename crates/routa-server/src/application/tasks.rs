@@ -225,7 +225,45 @@ impl TaskApplicationService {
             && (has_assigned_provider_update
                 || has_assigned_specialist_update
                 || has_assigned_role_update);
-        let should_trigger_agent = (entering_dev || assigned_while_in_dev || retry_trigger)
+
+        // Check if entering a column with automation enabled
+        let entering_new_column = has_column_update
+            && task.column_id.as_deref() != existing_column_id.as_deref();
+        let column_automation = if entering_new_column {
+            if let (Some(board_id), Some(col_id)) = (&task.board_id, &task.column_id) {
+                self.state
+                    .kanban_store
+                    .get(board_id)
+                    .await
+                    .ok()
+                    .flatten()
+                    .and_then(|board| {
+                        board
+                            .columns
+                            .into_iter()
+                            .find(|c| &c.id == col_id)
+                            .and_then(|col| col.automation)
+                            .filter(|a| a.enabled)
+                    })
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+
+        // Apply automation provider/role if column automation is configured
+        if let Some(ref automation) = column_automation {
+            if task.assigned_provider.is_none() {
+                task.assigned_provider = automation.provider_id.clone();
+            }
+            if task.assigned_role.is_none() {
+                task.assigned_role = automation.role.clone();
+            }
+        }
+
+        let should_trigger_agent = (entering_dev || assigned_while_in_dev || retry_trigger
+            || column_automation.is_some())
             && task.trigger_session_id.is_none();
 
         task.updated_at = Utc::now();
