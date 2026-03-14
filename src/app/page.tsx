@@ -105,22 +105,22 @@ export default function HomePage() {
     <NotificationProvider>
     <div className="h-screen flex flex-col bg-[#fafafa] dark:bg-[#0a0c12]">
       {/* ─── Minimal Header ─────────────────────────────────────────── */}
-      <header className="h-11 shrink-0 flex items-center px-5 z-10 border-b border-gray-100 dark:border-[#151720]">
-        <div className="flex items-center gap-2.5">
+      <header className="h-11 shrink-0 flex items-center px-3 sm:px-5 z-10 border-b border-gray-100 dark:border-[#151720]">
+        <div className="flex items-center gap-2 sm:gap-2.5 min-w-0">
           <Image src="/logo.svg" alt="Routa" width={22} height={22} className="rounded-md" />
-          <span className="text-[13px] font-semibold text-gray-800 dark:text-gray-200 tracking-tight">
+          <span className="truncate text-[13px] font-semibold text-gray-800 dark:text-gray-200 tracking-tight">
             Routa
           </span>
         </div>
 
         <div className="flex-1" />
 
-        <nav className="flex items-center gap-0.5">
+        <nav className="flex items-center gap-0.5 sm:gap-1">
           {/* Kanban link - quick access to current workspace board */}
           {activeWorkspaceId && (
             <Link
               href={`/workspace/${activeWorkspaceId}/kanban`}
-              className="px-2.5 py-1 rounded-md text-[11px] font-medium text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-[#151720] transition-colors"
+              className="px-2 py-1 rounded-md text-[11px] font-medium text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-[#151720] transition-colors"
               title="Open Kanban Board"
             >
               Kanban
@@ -128,7 +128,7 @@ export default function HomePage() {
           )}
 
           {/* Integrations dropdown — merges MCP + A2A */}
-          <div className="relative" ref={integrationsRef}>
+          <div className="relative hidden sm:block" ref={integrationsRef}>
             <button
               onClick={() => setShowIntegrationsMenu((v) => !v)}
               className={`flex items-center gap-1 px-2.5 py-1 rounded-md text-[11px] font-medium transition-colors ${showIntegrationsMenu ? "text-gray-800 dark:text-gray-200 bg-gray-100 dark:bg-[#151720]" : "text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-[#151720]"}`}
@@ -162,13 +162,13 @@ export default function HomePage() {
 
           <Link
             href="/settings/webhooks"
-            className="px-2.5 py-1 rounded-md text-[11px] font-medium text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-[#151720] transition-colors"
+            className="hidden sm:inline-flex px-2.5 py-1 rounded-md text-[11px] font-medium text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-[#151720] transition-colors"
           >
             Webhooks
           </Link>
           <Link
             href="/settings/schedules"
-            className="px-2.5 py-1 rounded-md text-[11px] font-medium text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-[#151720] transition-colors"
+            className="hidden sm:inline-flex px-2.5 py-1 rounded-md text-[11px] font-medium text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-[#151720] transition-colors"
           >
             Schedules
           </Link>
@@ -188,7 +188,7 @@ export default function HomePage() {
           </button>
 
           {/* Single combined status indicator */}
-          <div className="ml-2 pl-3 border-l border-gray-200 dark:border-[#1f2233]">
+          <div className="ml-1 hidden sm:block sm:ml-2 sm:pl-3 border-l border-gray-200 dark:border-[#1f2233]">
             <ConnectionDot connected={acp.connected} />
           </div>
         </nav>
@@ -201,32 +201,46 @@ export default function HomePage() {
             <OnboardingCard onCreateWorkspace={handleWorkspaceCreate} />
           </div>
         ) : (
-          <div className="min-h-full px-4 py-5 sm:px-6 sm:py-8">
+          <div className="min-h-full px-3 py-4 sm:px-6 sm:py-8">
             <div className="mx-auto flex w-full max-w-6xl flex-col gap-6 lg:gap-8">
-              <section className="relative overflow-hidden rounded-[28px] border border-gray-200/70 bg-white/90 shadow-[0_24px_80px_-48px_rgba(15,23,42,0.45)] dark:border-[#1c1f2e] dark:bg-[#10131b]/95">
+              <section className="relative overflow-hidden rounded-[24px] border border-gray-200/70 bg-white/90 shadow-[0_24px_80px_-48px_rgba(15,23,42,0.45)] dark:border-[#1c1f2e] dark:bg-[#10131b]/95 sm:rounded-[28px]">
                 <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,_rgba(251,191,36,0.16),_transparent_34%),radial-gradient(circle_at_bottom_right,_rgba(59,130,246,0.12),_transparent_38%)]" />
-                <div className="relative grid gap-6 p-5 sm:p-7 lg:grid-cols-[minmax(0,1.25fr)_320px] lg:items-start lg:gap-8 lg:p-8">
+                <div className="relative grid gap-4 p-4 sm:gap-6 sm:p-7 lg:grid-cols-[minmax(0,1.25fr)_320px] lg:items-start lg:gap-8 lg:p-8">
                   <div className="min-w-0">
-                    <div className="mb-4 flex flex-wrap items-center gap-2">
+                    <div className="mb-3 flex flex-wrap items-center gap-2">
                       <span className="inline-flex items-center gap-2 rounded-full border border-amber-200/80 bg-amber-50 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.22em] text-amber-700 dark:border-amber-500/20 dark:bg-amber-500/10 dark:text-amber-200">
                         Task Console
                       </span>
-                      <span className="text-xs text-gray-500 dark:text-gray-400">
+                      <span className="max-w-[20rem] text-xs leading-5 text-gray-500 dark:text-gray-400">
                         Home should launch work fast, not make you browse first.
                       </span>
                     </div>
 
                     <div className="max-w-3xl">
-                      <h1 className="text-3xl font-semibold tracking-tight text-gray-950 dark:text-gray-50 sm:text-[2.65rem]">
+                      <h1 className="text-[2.1rem] leading-[1.02] font-semibold tracking-tight text-gray-950 dark:text-gray-50 sm:text-[2.65rem]">
                         Start from the task.
                         <span className="block text-gray-500 dark:text-gray-400">Keep workspace as context.</span>
                       </h1>
-                      <p className="mt-3 max-w-2xl text-sm leading-6 text-gray-600 dark:text-gray-300 sm:text-[15px]">
+                      <p className="mt-3 max-w-2xl text-sm leading-7 text-gray-600 dark:text-gray-300 sm:text-[15px]">
                         Dispatch the next job here, keep the active workspace visible, and drop into Kanban only when you need the full board. The homepage should feel like a launchpad, not a directory.
                       </p>
                     </div>
 
-                    <div className="mt-5 grid gap-3 sm:grid-cols-3">
+                    <div className="mt-5 max-w-3xl">
+                      <HomeInput
+                        workspaceId={activeWorkspaceId ?? undefined}
+                        onWorkspaceChange={(wsId) => {
+                          setActiveWorkspaceId(wsId);
+                          setRefreshKey((k) => k + 1);
+                        }}
+                        onSessionCreated={() => {
+                          setRefreshKey((k) => k + 1);
+                        }}
+                        displaySkills={skillsHook.allSkills}
+                      />
+                    </div>
+
+                    <div className="mt-4 grid gap-3 sm:grid-cols-3">
                       <HeroStat
                         label="Workspaces"
                         value={workspaceCount.toString()}
@@ -241,20 +255,6 @@ export default function HomePage() {
                         label="Runtime"
                         value={acp.connected ? "Ready" : "Offline"}
                         detail={acp.connected ? "ACP connection is healthy" : "Reconnect before launching sessions"}
-                      />
-                    </div>
-
-                    <div className="mt-6 max-w-3xl">
-                      <HomeInput
-                        workspaceId={activeWorkspaceId ?? undefined}
-                        onWorkspaceChange={(wsId) => {
-                          setActiveWorkspaceId(wsId);
-                          setRefreshKey((k) => k + 1);
-                        }}
-                        onSessionCreated={() => {
-                          setRefreshKey((k) => k + 1);
-                        }}
-                        displaySkills={skillsHook.allSkills}
                       />
                     </div>
                   </div>
@@ -275,23 +275,23 @@ export default function HomePage() {
                       <p className="mt-3 text-sm leading-6 text-gray-600 dark:text-gray-300">
                         Use one workspace as the active lane for sessions, then jump sideways only when you need a broader operational view.
                       </p>
-                      <div className="mt-5 flex flex-wrap gap-2.5">
+                      <div className="mt-5 flex flex-col gap-2.5 sm:flex-row sm:flex-wrap">
                         <Link
                           href={activeKanbanHref}
-                          className="inline-flex items-center gap-2 rounded-full bg-gray-950 px-4 py-2 text-xs font-medium text-white transition-colors hover:bg-gray-800 dark:bg-gray-100 dark:text-gray-950 dark:hover:bg-white"
+                          className="inline-flex w-full items-center justify-center gap-2 rounded-full bg-gray-950 px-4 py-2.5 text-xs font-medium text-white transition-colors hover:bg-gray-800 dark:bg-gray-100 dark:text-gray-950 dark:hover:bg-white sm:w-auto"
                         >
                           Open Kanban
                         </Link>
                         <Link
                           href={activeWorkspaceHref}
-                          className="inline-flex items-center gap-2 rounded-full border border-gray-200 px-4 py-2 text-xs font-medium text-gray-600 transition-colors hover:border-gray-300 hover:text-gray-900 dark:border-[#2a3042] dark:text-gray-300 dark:hover:border-[#39415a] dark:hover:text-gray-100"
+                          className="inline-flex w-full items-center justify-center gap-2 rounded-full border border-gray-200 px-4 py-2.5 text-xs font-medium text-gray-600 transition-colors hover:border-gray-300 hover:text-gray-900 dark:border-[#2a3042] dark:text-gray-300 dark:hover:border-[#39415a] dark:hover:text-gray-100 sm:w-auto"
                         >
                           Workspace Hub
                         </Link>
                       </div>
                     </div>
 
-                    <div className="rounded-[24px] border border-dashed border-gray-200/90 bg-white/70 p-5 dark:border-[#222638] dark:bg-[#11141d]/80">
+                    <div className="hidden rounded-[24px] border border-dashed border-gray-200/90 bg-white/70 p-5 dark:border-[#222638] dark:bg-[#11141d]/80 sm:block">
                       <div className="text-[11px] font-semibold uppercase tracking-[0.22em] text-gray-500 dark:text-gray-400">
                         Home Rules
                       </div>
@@ -452,9 +452,9 @@ function HomeTodoPreview({
   }
 
   return (
-    <section className="rounded-[28px] border border-gray-200/70 bg-white/95 p-5 shadow-[0_18px_60px_-46px_rgba(15,23,42,0.42)] dark:border-[#1c1f2e] dark:bg-[#10131b]/95 sm:p-6">
-      <div className="mb-5 flex flex-wrap items-start justify-between gap-4">
-        <div>
+    <section className="rounded-[24px] border border-gray-200/70 bg-white/95 p-4 shadow-[0_18px_60px_-46px_rgba(15,23,42,0.42)] dark:border-[#1c1f2e] dark:bg-[#10131b]/95 sm:rounded-[28px] sm:p-6">
+      <div className="mb-5 flex flex-col items-start gap-4 sm:flex-row sm:flex-wrap sm:items-start sm:justify-between">
+        <div className="min-w-0">
           <div className="flex items-center gap-2">
             <svg className="w-4 h-4 text-blue-500 dark:text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M9 4.5v15m6-15v15m-10.875 0h15.75c.621 0 1.125-.504 1.125-1.125V5.625c0-.621-.504-1.125-1.125-1.125H4.125C3.504 4.5 3 5.004 3 5.625v12.75c0 .621.504 1.125 1.125 1.125z" />
@@ -472,7 +472,7 @@ function HomeTodoPreview({
         </div>
         <Link
           href={`/workspace/${workspaceId}/kanban`}
-          className="inline-flex items-center gap-1.5 rounded-full bg-blue-600 px-4 py-2 text-xs font-medium text-white transition-colors hover:bg-blue-700"
+          className="inline-flex w-full items-center justify-center gap-1.5 rounded-full bg-blue-600 px-4 py-2.5 text-xs font-medium text-white transition-colors hover:bg-blue-700 sm:w-auto"
         >
           <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M9 4.5v15m6-15v15m-10.875 0h15.75c.621 0 1.125-.504 1.125-1.125V5.625c0-.621-.504-1.125-1.125-1.125H4.125C3.504 4.5 3 5.004 3 5.625v12.75c0 .621.504 1.125 1.125 1.125z" />
@@ -498,7 +498,7 @@ function HomeTodoPreview({
             <Link
               key={task.id}
               href={`/workspace/${workspaceId}/kanban`}
-              className="group rounded-[22px] border border-gray-200/80 bg-[#fcfcfc] px-4 py-4 transition-all hover:-translate-y-0.5 hover:border-blue-200 hover:bg-blue-50/60 hover:shadow-sm dark:border-[#1f2434] dark:bg-[#0f1219] dark:hover:border-blue-800/40 dark:hover:bg-blue-900/5"
+              className="group rounded-[22px] border border-gray-200/80 bg-[#fcfcfc] px-4 py-4 transition-all hover:border-blue-200 hover:bg-blue-50/60 hover:shadow-sm dark:border-[#1f2434] dark:bg-[#0f1219] dark:hover:border-blue-800/40 dark:hover:bg-blue-900/5 sm:hover:-translate-y-0.5"
             >
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0 flex-1">
@@ -684,8 +684,8 @@ function WorkspaceCards({
   }).slice(0, 5);
 
   return (
-    <section className="rounded-[28px] border border-gray-200/70 bg-white/95 p-5 shadow-[0_18px_60px_-46px_rgba(15,23,42,0.42)] dark:border-[#1c1f2e] dark:bg-[#10131b]/95 sm:p-6">
-      <div className="mb-5 flex items-center justify-between gap-3">
+    <section className="rounded-[24px] border border-gray-200/70 bg-white/95 p-4 shadow-[0_18px_60px_-46px_rgba(15,23,42,0.42)] dark:border-[#1c1f2e] dark:bg-[#10131b]/95 sm:rounded-[28px] sm:p-6">
+      <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h2 className="text-xs font-semibold uppercase tracking-[0.16em] text-gray-500 dark:text-gray-400">
             Workspace Pulse
