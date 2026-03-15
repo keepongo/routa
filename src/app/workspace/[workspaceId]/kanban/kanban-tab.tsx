@@ -1050,7 +1050,7 @@ export function KanbanTab({ workspaceId, boards, tasks, sessions, providers, spe
 
         {agentPanelOpen && agentSessionId && acp && (
           <aside
-            className="flex h-full w-[32rem] min-w-[28rem] flex-col overflow-hidden rounded-2xl border border-gray-200/70 bg-white dark:border-[#1c1f2e] dark:bg-[#12141c]"
+            className="flex h-full w-lg min-w-md flex-col overflow-hidden rounded-2xl border border-gray-200/70 bg-white dark:border-[#1c1f2e] dark:bg-[#12141c]"
             data-testid="kanban-agent-panel"
           >
             <div className="flex items-center justify-between border-b border-gray-100 px-4 py-3 dark:border-[#191c28]">
@@ -1154,6 +1154,7 @@ export function KanbanTab({ workspaceId, boards, tasks, sessions, providers, spe
                   <KanbanCardDetail
                     key={task.id}
                     task={task}
+                    boardColumns={board?.columns ?? []}
                     availableProviders={availableProviders}
                     specialists={specialists}
                     codebases={codebases}
@@ -1440,7 +1441,7 @@ export function KanbanTab({ workspaceId, boards, tasks, sessions, providers, spe
 
       {/* Replace All Repos Confirmation Modal */}
       {showReplaceAllConfirm && editRepoSelection && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 px-4 animate-in fade-in duration-150">
+        <div className="fixed inset-0 z-60 flex items-center justify-center bg-black/50 px-4 animate-in fade-in duration-150">
           <div className="relative w-full max-w-md overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-2xl dark:border-[#1c1f2e] dark:bg-[#12141c] animate-in zoom-in-95 duration-150">
             <div className="p-6">
               <div className="flex items-start gap-4">
