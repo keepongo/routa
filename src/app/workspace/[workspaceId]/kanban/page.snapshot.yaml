@@ -1,160 +1,239 @@
 # page-id: kanban
 # route: /workspace/default/kanban
 # source-page: src/app/workspace/[workspaceId]/kanban/page.tsx
-# url: http://127.0.0.1:3000/workspace/default/kanban
+# url: http://localhost:3000/workspace/default/kanban
 # title: Routa - Multi-Agent Coordinator
-# generated-at: 2026-03-13T08:19:56.444Z
-# generator: playwright
-# playwright-version: 1.58.2
-- banner:
-  - link "Routa Routa":
-    - /url: /
-    - img "Routa"
-    - text: Routa
-  - img
-  - text: Workspace
-  - button "Switch":
-    - img
-    - text: Switch
-  - text: Docker unavailable
-  - button "Refresh"
-  - text: MCP /api/mcp ACP /api/acp
-  - link "Dashboard":
-    - /url: /workspace/default
-    - img
-    - text: Dashboard
-- main:
-  - text: Repos
-  - button "phodal/routa @main default"
-  - textbox "Ask agent to create issues..."
-  - button "Send" [disabled]
-  - text: Repo health 7 session mismatch
-  - button "Settings"
-  - button "Manual"
-  - text: Backlog 2 cards
-  - button "Open Login Story":
-    - img
-    - button "Delete task":
-      - img
-    - text: Login Story Local issue medium
-    - paragraph: Create login functionality - implement user authentication with login form, validation, and session handling
-    - text: phodal/routa Unassigned
-    - button "Assign"
-    - text: Not synced
-    - button "View detail"
-  - button "Open Auto Codex Browser Verify":
-    - img
-    - button "Delete task":
-      - img
-    - text: Auto Codex Browser Verify Local issue medium
-    - paragraph: 验证卡片移动触发
-    - text: phodal/routa Unassigned
-    - button "Assign"
-    - text: Not synced
-    - button "View detail"
-  - text: Todo 1 cards
-  - button "Open Test OpenCode Smoke Issue":
-    - img
-    - button "Delete task":
-      - img
-    - text: Test OpenCode Smoke Issue Local issue medium
-    - paragraph: Testing ACP triggering with OpenCode provider and session popup behavior
-    - text: phodal/routa OpenCode DEVELOPER
-    - button "Assign"
-    - text: Not synced
-    - button "Run"
-    - button "View detail"
-  - text: Dev 2 cards
-  - button "Open Test Drag and Drop":
-    - img
-    - button "Delete task":
-      - img
-    - text: Test Drag and Drop Local issue medium
-    - paragraph: Testing drag and drop functionality
-    - text: phodal/routa
-    - button "active issue/f0c476e5-test-drag-and-drop"
-    - text: Unassigned
-    - button "Assign"
-    - text: Not synced
-    - button "View detail"
-    - button "View session"
-  - button "Open Test OpenCode Smoke Issue 1773302698463":
-    - img
-    - button "Delete task":
-      - img
-    - text: Test OpenCode Smoke Issue 1773302698463 Local issue medium
-    - paragraph: "Testing ACP triggering with OpenCode provider and session popup behavior ## Current Status: IN PROGRESS - Found test failures ### Findings: - E2E tests for ACP Chat with OpenCode are failing - Test expects `h1` element with text \"Routa\" but the page uses a `span` element instead - This is causing the smoke test to fail ### Test Files: - e2e/acp-chat.spec.ts - Tests ACP with OpenCode provider - e2e/acp-provider-switching.spec.ts - Tests provider switching - e2e/mcp-integration.spec.ts - Tests MCP integration ### Next Steps: - Investigate why the h1 element is missing - Fix test locators or verify page structure"
-    - text: phodal/routa
-    - button "active issue/a2e0aff7-test-opencode-smoke-issue-1773302698463"
-    - text: OpenCode CRAFTER
-    - button "Assign"
-    - text: Not synced
-    - button "View detail"
-    - button "View session"
-  - text: Review 0 cards Blocked 0 cards Done 5 cards
-  - button "Open Test OpenCode Smoke Issue 1773301978111":
-    - img
-    - button "Delete task":
-      - img
-    - text: Test OpenCode Smoke Issue 1773301978111 Local issue medium
-    - paragraph: "Testing ACP triggering with OpenCode provider and session popup behavior ## Test Results: PASSED ✓ ### What was tested: 1. Workspace page loads correctly at /workspace/default 2. Sessions panel is visible 3. Connection status - verified already connected (Disconnect button visible) 4. New Session button works - creates a new session 5. Session created successfully - Active tab visible after creation 6. Provider-related UI elements are present ### Test Output: ``` 1. Navigated to workspace page - Sessions panel visible 2. Already connected (Disconnect button visible) 3. New Session button visible - Clicked New Session 4. Session created (Active tab visible) 5. Provider-related buttons found: 1 2 passed (8.0s) ``` ### Summary The smoke test for OpenCode ACP triggering and session popup behavior passed successfully. Both chromium and chromium-headed browsers passed the test."
-    - text: phodal/routa
-    - button "active issue/ef67079c-test-opencode-smoke-issue-1773301978111"
-    - text: OpenCode CRAFTER
-    - button "Assign"
-    - text: Not synced
-    - button "View detail"
-    - button "View session"
-  - button "Open Auto Codex Browser Verify":
-    - img
-    - button "Delete task":
-      - img
-    - text: Auto Codex Browser Verify Local issue medium
-    - paragraph: 验证卡片移动触发 - 已完成 验证结果： - 使用 routa-coordination_move_card MCP 工具 - 从 "dev" 移动到 "done" 列 - 状态正确更新为 "COMPLETED" - 卡片移动触发工作正常
-    - text: phodal/routa
-    - button "active issue/517350dc-auto-codex-browser-verify"
-    - text: Unassigned
-    - button "Assign"
-    - text: Not synced
-    - button "View detail"
-    - button "View session"
-  - button "Open Auto Codex Browser Verify 2":
-    - img
-    - button "Delete task":
-      - img
-    - text: Auto Codex Browser Verify 2 Local issue medium
-    - paragraph: "结论：Next.js 后端 `provider=\"codex\"` 可显式启动成功（标准 ACP 路径、preset `codex`→`codex-acp`）。Rust 后端存在兼容性风险：`/api/providers` 当前返回 `id` 使用 `name`，可能为 `Codex`；`get_preset_by_id_with_registry` 仅识别 `codex-acp` 等 `id`，未处理 `codex`/大小写别名，因此显式 codex 请求在 Rust 路径可能失败。已形成问题说明草案。"
-    - text: phodal/routa
-    - button "active issue/51ec62dc-auto-codex-browser-verify-2"
-    - text: Codex DEVELOPER Claude Code
-    - button "Assign"
-    - text: Not synced
-    - button "View detail"
-    - button "View session"
-  - button "Open Echo Hello World 0x01":
-    - img
-    - button "Delete task":
-      - img
-    - text: Echo Hello World 0x01 Local issue medium
-    - paragraph: "Completed: task requires printing exact text output."
-    - text: in-progress phodal/routa
-    - button "active issue/3b91fc56-echo-hello-world-0x01"
-    - text: Codex DEVELOPER Claude Code
-    - button "Assign"
-    - text: Not synced
-    - button "View detail"
-    - button "View session"
-  - button "Open Echo Hello World auto test":
-    - img
-    - button "Delete task":
-      - img
-    - text: Echo Hello World auto test Local issue medium
-    - paragraph: "Started execution for task: run `hello world` output directly. Executed shell command; output: hello world."
-    - text: phodal/routa
-    - button "active issue/69ffa758-echo-hello-world-auto-test"
-    - text: Codex DEVELOPER Claude Code
-    - button "Assign"
-    - text: Not synced
-    - button "View detail"
-    - button "View session"
-- alert
+# generated-at: 2026-03-14T15:31:12.832Z
+# generator: playwright-cli
+- generic [ref=e1]:
+  - generic [ref=e2]:
+    - banner [ref=e3]:
+      - link "Routa Routa" [ref=e4] [cursor=pointer]:
+        - /url: /
+        - img "Routa" [ref=e5]
+        - generic [ref=e6]: Routa
+      - img [ref=e7]
+      - generic [ref=e9]:
+        - generic [ref=e11]: Workspace
+        - button "Switch" [ref=e13]:
+          - img [ref=e14]
+          - text: Switch
+      - generic [ref=e17]:
+        - 'generic "Command failed: docker info --format ''{{json .}}'' Cannot connect to the Docker daemon at unix:///var/run/docker.sock. Is the docker daemon running?" [ref=e203]':
+          - generic [ref=e20]: Docker unavailable
+        - button "Refresh" [ref=e204]
+      - generic [ref=e22]:
+        - generic [ref=e23]:
+          - text: MCP
+          - generic [ref=e25]: /api/mcp
+        - generic [ref=e26]:
+          - text: ACP
+          - generic [ref=e28]: /api/acp
+      - link "Dashboard" [ref=e29] [cursor=pointer]:
+        - /url: /workspace/default
+        - img [ref=e30]
+        - text: Dashboard
+    - main [ref=e32]:
+      - generic [ref=e34]:
+        - generic [ref=e36]:
+          - generic [ref=e37]:
+            - generic [ref=e38]:
+              - generic [ref=e39]: Repos
+              - button "phodal/routa @main default" [ref=e41]:
+                - generic [ref=e43]: phodal/routa
+                - generic [ref=e44]: "@main"
+                - generic [ref=e45]: default
+            - generic [ref=e46]:
+              - combobox "KanbanTask Agent provider" [ref=e47]:
+                - option "Claude Code"
+                - option "Claude Code SDK" [selected]
+                - option "Codex"
+                - option "Gemini"
+                - option "GitHub Copilot"
+                - option "Kimi"
+                - option "Kiro"
+                - option "OpenCode"
+                - option "OpenCode SDK"
+                - option "Qoder"
+                - option "Auggie CLI (Registry)"
+                - option "Autohand Code"
+                - option "Claude Agent"
+                - option "Cline"
+                - option "Codebuddy Code"
+                - option "Codex CLI"
+                - option "crow-cli"
+                - option "DeepAgents"
+                - option "DimCode"
+                - option "Factory Droid"
+                - option "fast-agent"
+                - option "Gemini CLI (Registry)"
+                - option "GitHub Copilot"
+                - option "Kilo"
+                - option "Minion Code"
+                - option "Nova"
+                - option "pi ACP"
+                - option "Qwen Code"
+              - generic [ref=e48]:
+                - textbox "Describe work to plan in Kanban..." [ref=e205]
+                - button "Send" [disabled] [ref=e50]
+              - button "View" [ref=e218]
+          - generic [ref=e51]:
+            - button "Settings" [ref=e52]
+            - button "Manual" [ref=e53]
+        - generic [ref=e54]:
+          - generic [ref=e55]: Limit 3
+          - generic "Running 1. Test OpenCode Smoke Issue 1773501795365" [ref=e56]: Running 1
+          - generic "Queued No cards" [ref=e57]: Queued 0
+        - generic [ref=e58]:
+          - generic [ref=e61]:
+            - generic [ref=e62]:
+              - generic [ref=e63]:
+                - generic [ref=e64]:
+                  - generic [ref=e65]: Backlog
+                  - generic [ref=e66]: 2 cards
+                - generic "-> Claude Code · DEVELOPER · Issue Enricher" [ref=e206]
+              - generic [ref=e68]:
+                - button "Open Login Story" [ref=e69]:
+                  - generic "Drag card":
+                    - img
+                  - button "Delete task" [ref=e70]:
+                    - img [ref=e71]
+                  - generic [ref=e73]:
+                    - generic [ref=e74]:
+                      - generic [ref=e75]: Login Story
+                      - generic [ref=e76]: Local issue
+                    - generic [ref=e77]: medium
+                  - paragraph [ref=e78]: Create login functionality - implement user authentication with login form, validation, and session handling
+                  - generic [ref=e80]: phodal/routa
+                  - generic [ref=e83]:
+                    - generic [ref=e85]: Unassigned
+                    - button "Assign" [ref=e86]
+                  - generic [ref=e87]:
+                    - generic [ref=e89]: Not synced
+                    - button "View detail" [ref=e91]
+                - button "Open Auto Codex Browser Verify" [ref=e92]:
+                  - generic "Drag card":
+                    - img
+                  - button "Delete task" [ref=e93]:
+                    - img [ref=e94]
+                  - generic [ref=e96]:
+                    - generic [ref=e97]:
+                      - generic [ref=e98]: Auto Codex Browser Verify
+                      - generic [ref=e99]: Local issue
+                    - generic [ref=e100]: medium
+                  - paragraph [ref=e101]: 验证卡片移动触发
+                  - generic [ref=e103]: phodal/routa
+                  - generic [ref=e106]:
+                    - generic [ref=e108]: Unassigned
+                    - button "Assign" [ref=e109]
+                  - generic [ref=e110]:
+                    - generic [ref=e112]: Not synced
+                    - button "View detail" [ref=e114]
+            - generic [ref=e115]:
+              - generic [ref=e116]:
+                - generic [ref=e117]:
+                  - generic [ref=e118]: Todo
+                  - generic [ref=e119]: 1 cards
+                - generic "-> Codex · ROUTA" [ref=e207]
+              - button "Open Test OpenCode Smoke Issue" [ref=e122]:
+                - generic "Drag card":
+                  - img
+                - button "Delete task" [ref=e123]:
+                  - img [ref=e124]
+                - generic [ref=e126]:
+                  - generic [ref=e127]:
+                    - generic [ref=e128]: Test OpenCode Smoke Issue
+                    - generic [ref=e129]: Local issue
+                  - generic [ref=e130]: medium
+                - paragraph [ref=e131]: Testing ACP triggering with OpenCode provider and session popup behavior
+                - generic [ref=e133]: phodal/routa
+                - generic [ref=e136]:
+                  - generic [ref=e208]:
+                    - generic [ref=e209]: OpenCode
+                    - generic [ref=e210]: DEVELOPER
+                  - button "Assign" [ref=e139]
+                - generic [ref=e140]:
+                  - generic [ref=e142]: Not synced
+                  - generic [ref=e143]:
+                    - button "Run" [ref=e144]
+                    - button "View detail" [ref=e145]
+            - generic [ref=e146]:
+              - generic [ref=e147]:
+                - generic [ref=e148]:
+                  - generic [ref=e149]: Dev
+                  - generic [ref=e150]: 1 cards
+                - generic "-> Claude Code · DEVELOPER · PR Reviewer" [ref=e211]
+              - button "Open Test ACP session with OpenCode provider" [ref=e153]:
+                - generic "Drag card":
+                  - img
+                - button "Delete task" [ref=e154]:
+                  - img [ref=e155]
+                - generic [ref=e157]:
+                  - generic [ref=e158]:
+                    - generic [ref=e159]: Test ACP session with OpenCode provider
+                    - generic [ref=e160]: Local issue
+                  - generic [ref=e161]: medium
+                - paragraph [ref=e162]: "## Problem Statement Need to verify that ACP (Agent Coordination Platform) sessions can be successfully triggered using the OpenCode provider and that session popups display correctly. ## Why Now OpenCode is a new ACP provider that needs validation before release. ## Context - **Current behavior:** OpenCode provider exists but has not been tested end-to-end - **Desired behavior:** User can select OpenCode, trigger a session, and see the session popup - **Related files:** - ACP provider configuration (likely in `apps/web/src/lib/acp/` or similar) - Session management UI components - Workspace detail/session pages - **Related history:** None found after searching docs/issues/ ## Acceptance Criteria - [ ] User can select OpenCode as provider on workspace detail page - [ ] Clicking \"Start Session\" triggers an ACP session with OpenCode - [ ] Session popup appears and displays session information correctly - [ ] Session appears in the session queue/trace UI - [ ] Session trace is viewable and complete ## Out of Scope - Testing other ACP providers (Claude, Copilot) - Testing complex multi-agent scenarios - Performance testing"
+                - generic [ref=e164]: phodal/routa
+                - generic [ref=e167]:
+                  - generic [ref=e212]:
+                    - generic [ref=e213]: OpenCode
+                    - generic [ref=e214]: CRAFTER
+                    - generic [ref=e215]: Issue Enricher
+                  - button "Assign" [ref=e170]
+                - generic [ref=e171]:
+                  - generic [ref=e172]:
+                    - generic [ref=e173]: Not synced
+                    - generic [ref=e175]: ready
+                  - generic [ref=e176]:
+                    - button "View detail" [ref=e177]
+                    - button "View session" [ref=e178]
+            - generic [ref=e180]:
+              - generic [ref=e181]:
+                - generic [ref=e182]: Review
+                - generic [ref=e183]: 0 cards
+              - generic "-> Claude Code · GATE · Desk Check Agent" [ref=e216]
+            - generic [ref=e187]:
+              - generic [ref=e188]:
+                - generic [ref=e189]: Done
+                - generic [ref=e190]: 0 cards
+              - generic "-> Codex · GATE · Verifier" [ref=e217]
+          - complementary [ref=e219]:
+            - generic [ref=e220]:
+              - generic [ref=e221]:
+                - generic [ref=e222]: KanbanTask Agent
+                - generic [ref=e223]: claude-code-sdk · 26e72baa-fed...
+              - generic [ref=e224]:
+                - link "Open" [ref=e225] [cursor=pointer]:
+                  - /url: /workspace/default/sessions/26e72baa-fed6-49b3-9de6-8994ebabef66
+                - button "Close" [ref=e226]
+            - generic [ref=e228]:
+              - generic [ref=e229]:
+                - generic [ref=e232]: "Session: 26e72baa-fed..."
+                - generic [ref=e233]:
+                  - button "Chat" [ref=e234]
+                  - button "Trace" [active] [ref=e235]
+              - generic [ref=e375]:
+                - generic [ref=e376]:
+                  - generic [ref=e377]:
+                    - img [ref=e378]
+                    - generic [ref=e380]: Agent Trace
+                  - generic [ref=e381]:
+                    - button "Refresh" [ref=e382]
+                    - button "Export" [disabled] [ref=e383]
+                - generic [ref=e384]:
+                  - generic [ref=e385]: 31307 total records
+                  - generic [ref=e386]: 409 sessions
+                  - generic [ref=e387]: 18 days
+                - generic [ref=e388]:
+                  - button "All" [ref=e389]
+                  - button "User" [ref=e390]
+                  - button "Agent" [ref=e391]
+                  - button "Tools" [ref=e392]
+                  - button "Thoughts" [ref=e393]
+                - generic [ref=e395]:
+                  - img [ref=e396]
+                  - paragraph [ref=e398]: No traces for this session yet
+  - button "Open Next.js Dev Tools" [ref=e198] [cursor=pointer]:
+    - img [ref=e199]
+  - alert [ref=e202]
