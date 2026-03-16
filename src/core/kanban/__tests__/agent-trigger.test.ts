@@ -59,17 +59,18 @@ describe("buildTaskPrompt", () => {
     });
 
     const prompt = buildTaskPrompt(task, [
-      { id: "dev", name: "Dev", position: 0 },
+      { id: "dev", name: "Dev", position: 0, stage: "dev" },
       {
         id: "review",
         name: "Review",
         position: 1,
+        stage: "review",
         automation: {
           enabled: true,
           requiredArtifacts: ["screenshot", "test_results"],
         },
       },
-      { id: "done", name: "Done", position: 2 },
+      { id: "done", name: "Done", position: 2, stage: "done" },
     ]);
 
     expect(prompt).toContain("## Artifact Gates");
