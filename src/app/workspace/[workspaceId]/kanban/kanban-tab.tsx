@@ -934,10 +934,10 @@ export function KanbanTab({ workspaceId, boards, tasks, sessions, providers, spe
   }
 
   return (
-    <div className="flex flex-col h-full space-y-4">
-      <div className="shrink-0 rounded-2xl border border-gray-200/70 bg-white px-4 py-3 dark:border-[#1c1f2e] dark:bg-[#12141c]">
-        <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
-          <div className="flex min-w-0 flex-1 flex-col gap-3 xl:flex-row xl:items-center">
+    <div className="flex flex-col h-full space-y-2">
+      <div className="shrink-0 rounded-2xl border border-gray-200/70 bg-white px-4 py-2 dark:border-[#1c1f2e] dark:bg-[#12141c]">
+        <div className="flex flex-col gap-2 lg:flex-row lg:items-start lg:justify-between lg:gap-3">
+          <div className="flex min-w-0 flex-1 flex-col gap-2 lg:flex-row lg:items-center lg:gap-3">
             <div className="flex min-w-0 items-start gap-2 xl:max-w-xl">
               <span className="pt-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-gray-500 dark:text-gray-400">Repos</span>
               {codebases.length === 0 ? (
@@ -1013,7 +1013,7 @@ export function KanbanTab({ workspaceId, boards, tasks, sessions, providers, spe
 
 
             {onAgentPrompt && (
-              <div className="flex min-w-[20rem] flex-1 items-center gap-2 xl:max-w-none">
+              <div className="flex min-w-[20rem] flex-1 items-center gap-2 lg:max-w-none">
                 <div className="group relative flex min-w-0 flex-1 items-center rounded-2xl border border-gray-200 bg-white shadow-sm transition-colors focus-within:border-amber-400/80 focus-within:ring-2 focus-within:ring-amber-400/15 dark:border-gray-700 dark:bg-[#12141c]">
                   <div className="relative shrink-0">
                     <select
@@ -1084,7 +1084,7 @@ export function KanbanTab({ workspaceId, boards, tasks, sessions, providers, spe
             )}
           </div>
 
-          <div className="flex shrink-0 items-center gap-1.5">
+          <div className="flex shrink-0 flex-wrap items-center gap-1.5">
             {(repoHealth.missingRepoTasks > 0 || repoHealth.cwdMismatchTasks > 0) && (
               <div className="inline-flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-1.5 text-[11px] text-amber-700 dark:border-amber-900/40 dark:bg-amber-900/10 dark:text-amber-300">
                 <span className="font-medium">Repo health</span>

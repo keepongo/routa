@@ -198,21 +198,24 @@ export function KanbanPageClient() {
         />
       }
     >
-      <div className="h-full flex flex-col bg-[var(--dt-bg-primary)] overflow-hidden">
+      <div className="flex h-full flex-col overflow-hidden bg-desktop-bg-primary" data-testid="kanban-page-shell">
         {/* Page Header */}
-          <div className="shrink-0 px-4 py-3 border-b border-[var(--dt-border)] flex items-center justify-between">
+          <div
+            className="shrink-0 flex items-center justify-between border-b border-desktop-border px-4 py-3"
+            data-testid="kanban-page-header"
+          >
             <div className="flex items-center gap-2">
-            <svg className="w-4 h-4 text-[var(--dt-text-secondary)]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+            <svg className="w-4 h-4 text-desktop-text-secondary" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M9 4.5v15m6-15v15m-10.875 0h15.75c.621 0 1.125-.504 1.125-1.125V5.625c0-.621-.504-1.125-1.125-1.125H4.125C3.504 4.5 3 5.004 3 5.625v12.75c0 .621.504 1.125 1.125 1.125z" />
             </svg>
-            <h1 className="text-[13px] font-medium text-[var(--dt-text-primary)]">Kanban Board</h1>
+            <h1 className="text-[13px] font-medium text-desktop-text-primary">Kanban Board</h1>
             {tasks.length > 0 && (
-              <span className="text-[11px] text-[var(--dt-text-secondary)]">({tasks.length} tasks)</span>
+              <span className="text-[11px] text-desktop-text-secondary" data-testid="kanban-task-count">({tasks.length} tasks)</span>
             )}
           </div>
           <button
             onClick={handleRefresh}
-            className="p-1.5 rounded hover:bg-[var(--dt-bg-active)]/70 text-[var(--dt-text-secondary)] hover:text-[var(--dt-text-primary)] transition-colors"
+            className="rounded p-1.5 text-desktop-text-secondary transition-colors hover:bg-desktop-bg-active/70 hover:text-desktop-text-primary"
             title="Refresh"
           >
             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
@@ -222,7 +225,7 @@ export function KanbanPageClient() {
         </div>
 
         {/* Kanban Content */}
-        <div className="flex-1 min-h-0 overflow-hidden p-4">
+        <div className="flex-1 min-h-0 overflow-hidden px-4 pb-4 pt-3">
           <KanbanTab
             workspaceId={workspaceId}
             boards={boards}
