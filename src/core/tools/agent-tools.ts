@@ -42,7 +42,20 @@ import { TaskStore } from "../store/task-store";
 import { ArtifactStore } from "../store/artifact-store";
 import { EventBus, AgentEventType } from "../events/event-bus";
 import { ToolResult, successResult, errorResult } from './tool-result';
-import { PermissionStore, PermissionRequest, PermissionUrgency } from './permission-store';
+import { applySandboxPermissionConstraints, SandboxPermissionConstraints } from "../sandbox";
+import {
+  PermissionStore,
+  PermissionRequest,
+  PermissionRequestOptions,
+  PermissionUrgency,
+} from './permission-store';
+
+function extractSandboxId(options?: PermissionRequestOptions): string | undefined {
+  const sandboxId = options?.sandboxId;
+  return typeof sandboxId === "string" && sandboxId.trim().length > 0
+    ? sandboxId.trim()
+    : undefined;
+}
 
 export class AgentTools {
   private artifactStore?: ArtifactStore;
@@ -1139,7 +1152,7 @@ export class AgentTools {
     type: string;
     tool?: string;
     description: string;
-    options?: Record<string, unknown>;
+    options?: PermissionRequestOptions;
     urgency?: string;
   }): Promise<ToolResult> {
     if (!this.permissionStore) {
@@ -1173,6 +1186,7 @@ export class AgentTools {
           '\nRequest ID: ' + request.id +
           '\nType: ' + params.type +
           (params.tool ? '\nTool: ' + params.tool : '') +
+          (extractSandboxId(params.options) ? '\nSandbox ID: ' + extractSandboxId(params.options) : '') +
           '\nDescription: ' + params.description +
           '\nUrgency: ' + request.urgency +
           '\nCall respondToPermission to allow or deny.',
@@ -1195,7 +1209,7 @@ export class AgentTools {
     coordinatorAgentId: string;
     decision: 'allow' | 'deny';
     feedback?: string;
-    constraints?: Record<string, unknown>;
+    constraints?: SandboxPermissionConstraints;
   }): Promise<ToolResult> {
     if (!this.permissionStore) {
       return errorResult('Permission store not configured');
@@ -1206,6 +1220,17 @@ export class AgentTools {
     }
     if (request.coordinatorAgentId !== params.coordinatorAgentId) {
       return errorResult('Only the designated coordinator can respond to this request');
+    }
+    let sandboxMutation: { sandboxId: string; applied: boolean; info?: unknown } | undefined;
+    const sandboxId = extractSandboxId(request.options);
+    if (params.decision === "allow" && sandboxId && params.constraints) {
+      try {
+        const info = await applySandboxPermissionConstraints(sandboxId, params.constraints);
+        sandboxMutation = { sandboxId, applied: true, info };
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        return errorResult(`Permission granted but sandbox policy mutation failed: ${message}`);
+      }
     }
     const ok = this.permissionStore.respond(params.requestId, params.decision, params.feedback, params.constraints);
     if (!ok) {
@@ -1219,7 +1244,8 @@ export class AgentTools {
         content:
           '[Permission Response] Request ' + params.requestId + ' has been ' + params.decision + '.' +
           (params.feedback ? '\nFeedback: ' + params.feedback : '') +
-          (params.constraints ? '\nConstraints: ' + JSON.stringify(params.constraints) : ''),
+          (params.constraints ? '\nConstraints: ' + JSON.stringify(params.constraints) : '') +
+          (sandboxMutation?.applied ? '\nSandbox policy updated for: ' + sandboxMutation.sandboxId : ''),
       })
     );
     this.eventBus.emit({
@@ -1229,7 +1255,12 @@ export class AgentTools {
       data: { requestId: params.requestId, requestingAgentId: request.requestingAgentId, decision: params.decision, feedback: params.feedback },
       timestamp: new Date(),
     });
-    return successResult({ requestId: params.requestId, decision: params.decision, notified: request.requestingAgentId });
+    return successResult({
+      requestId: params.requestId,
+      decision: params.decision,
+      notified: request.requestingAgentId,
+      sandboxMutation,
+    });
   }
 
   // ─── Phase 2: List Pending Permissions ──────────────────────────────────────
@@ -1241,7 +1272,16 @@ export class AgentTools {
     const pending = this.permissionStore.listPending(coordinatorAgentId);
     return successResult({
       count: pending.length,
-      requests: pending.map((r) => ({ id: r.id, requestingAgentId: r.requestingAgentId, type: r.type, tool: r.tool, description: r.description, urgency: r.urgency, createdAt: r.createdAt.toISOString() })),
+      requests: pending.map((r) => ({
+        id: r.id,
+        requestingAgentId: r.requestingAgentId,
+        type: r.type,
+        tool: r.tool,
+        description: r.description,
+        urgency: r.urgency,
+        sandboxId: extractSandboxId(r.options),
+        createdAt: r.createdAt.toISOString(),
+      })),
     });
   }
 

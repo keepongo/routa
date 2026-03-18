@@ -241,13 +241,26 @@ const requestPermissionParams = z.object({
   type: z.string().describe("Permission type: file_edit | dependency_install | destructive_op | clarification"),
   description: z.string().describe("What you want to do and why"),
   tool: z.string().optional().describe("Tool name involved, if any"),
+  sandboxId: z.string().optional().describe("Sandbox ID to mutate if this permission should update an existing Rust sandbox policy"),
   urgency: z.enum(["low", "normal", "high"]).optional().describe("Urgency level (default: normal)"),
 });
+
+const sandboxPermissionConstraintsSchema = z.object({
+  readOnlyPaths: z.array(z.string()).optional().describe("Additional read-only paths to grant"),
+  readWritePaths: z.array(z.string()).optional().describe("Additional read-write paths to grant"),
+  envFile: z.string().optional().describe("Optional env file path to layer into the sandbox"),
+  envAllowlist: z.array(z.string()).optional().describe("Environment variable keys allowed into the sandbox"),
+  capabilities: z.array(z.enum(["workspaceRead", "workspaceWrite", "networkAccess", "linkedWorktreeRead"])).optional().describe("Capability allow-list additions"),
+  networkMode: z.enum(["bridge", "none"]).optional().describe("Requested network mode"),
+  linkedWorktreeMode: z.enum(["disabled", "all", "explicit"]).optional().describe("Linked worktree access mode"),
+  linkedWorktreeIds: z.array(z.string()).optional().describe("Specific linked worktree IDs when using explicit mode"),
+}).partial();
 
 const respondToPermissionParams = z.object({
   requestId: z.string().describe("Permission request ID to respond to"),
   decision: z.enum(["allow", "deny"]).describe("Whether to allow or deny the request"),
   feedback: z.string().optional().describe("Optional feedback or constraints for the requester"),
+  constraints: sandboxPermissionConstraintsSchema.optional().describe("Structured sandbox permission constraints to merge into the worker sandbox policy"),
 });
 
 const requestShutdownParams = z.object({
@@ -331,7 +344,7 @@ export function createAgentManagementTools(
     request_permission: tool({
       description: "Request runtime permission from the coordinator agent before performing a sensitive operation (file edits outside scope, destructive commands, dependency installs, etc.).",
       inputSchema: requestPermissionParams,
-      execute: async ({ coordinatorAgentId, type, description, tool: toolName, urgency }: z.infer<typeof requestPermissionParams>) => {
+      execute: async ({ coordinatorAgentId, type, description, tool: toolName, sandboxId, urgency }: z.infer<typeof requestPermissionParams>) => {
         const result = await agentTools.requestPermission({
           requestingAgentId: agentId,
           coordinatorAgentId,
@@ -339,6 +352,7 @@ export function createAgentManagementTools(
           type,
           description,
           tool: toolName,
+          options: sandboxId ? { sandboxId } : undefined,
           urgency,
         });
         return result.data ?? { error: result.error };
@@ -348,12 +362,13 @@ export function createAgentManagementTools(
     respond_to_permission: tool({
       description: "Respond to a pending permission request from a worker agent. Use list_pending_permissions to see what's waiting.",
       inputSchema: respondToPermissionParams,
-      execute: async ({ requestId, decision, feedback }: z.infer<typeof respondToPermissionParams>) => {
+      execute: async ({ requestId, decision, feedback, constraints }: z.infer<typeof respondToPermissionParams>) => {
         const result = await agentTools.respondToPermission({
           requestId,
           coordinatorAgentId: agentId,
           decision,
           feedback,
+          constraints,
         });
         return result.data ?? { error: result.error };
       },

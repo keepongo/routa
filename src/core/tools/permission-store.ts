@@ -4,8 +4,14 @@
  * Backs the requestPermission / respondToPermission protocol (issue #137, Phase 2).
  */
 
+import type { SandboxPermissionConstraints } from "../sandbox";
+
 export type PermissionDecision = 'allow' | 'deny' | 'pending';
 export type PermissionUrgency = 'low' | 'normal' | 'high';
+export interface PermissionRequestOptions {
+  sandboxId?: string;
+  [key: string]: unknown;
+}
 
 export interface PermissionRequest {
   id: string;
@@ -16,11 +22,11 @@ export interface PermissionRequest {
   type: string;
   tool?: string;
   description: string;
-  options?: Record<string, unknown>;
+  options?: PermissionRequestOptions;
   urgency: PermissionUrgency;
   decision: PermissionDecision;
   feedback?: string;
-  constraints?: Record<string, unknown>;
+  constraints?: SandboxPermissionConstraints;
   createdAt: Date;
   respondedAt?: Date;
 }
@@ -55,7 +61,7 @@ export class PermissionStore {
     id: string,
     decision: Exclude<PermissionDecision, 'pending'>,
     feedback?: string,
-    constraints?: Record<string, unknown>
+    constraints?: SandboxPermissionConstraints
   ): boolean {
     const r = this.requests.get(id);
     if (!r || r.decision !== 'pending') return false;

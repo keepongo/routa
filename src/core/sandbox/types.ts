@@ -11,6 +11,14 @@ export const SANDBOX_CONTAINER_PORT = 8000;
 export const SANDBOX_IDLE_TIMEOUT_MS = 60_000;
 export const SANDBOX_CHECK_INTERVAL_MS = 60_000;
 
+export type SandboxNetworkMode = "bridge" | "none";
+export type SandboxCapability =
+  | "workspaceRead"
+  | "workspaceWrite"
+  | "networkAccess"
+  | "linkedWorktreeRead";
+export type SandboxLinkedWorktreeMode = "disabled" | "all" | "explicit";
+
 /** Information about a running sandbox container. */
 export interface SandboxInfo {
   /** Docker container ID. */
@@ -33,6 +41,18 @@ export interface SandboxInfo {
 export interface CreateSandboxRequest {
   /** Language for the sandbox kernel. Currently only "python" is supported. */
   lang: string;
+}
+
+/** Permission-driven sandbox policy mutations that map to Rust SandboxPermissionConstraints. */
+export interface SandboxPermissionConstraints {
+  readOnlyPaths?: string[];
+  readWritePaths?: string[];
+  envFile?: string;
+  envAllowlist?: string[];
+  capabilities?: SandboxCapability[];
+  networkMode?: SandboxNetworkMode;
+  linkedWorktreeMode?: SandboxLinkedWorktreeMode;
+  linkedWorktreeIds?: string[];
 }
 
 /** Request body for executing code in a sandbox. */
