@@ -22,6 +22,7 @@ use tokio::sync::RwLock;
 use tokio_stream::StreamExt as _;
 
 use crate::error::ServerError;
+use crate::rpc::RpcRouter;
 use crate::state::AppState;
 
 /// In-memory session store for MCP sessions.
@@ -558,6 +559,28 @@ fn build_tool_list_inner() -> Vec<serde_json::Value> {
                 "boardId": { "type": "string", "description": "Board ID" }
             },
             "required": ["columnId", "boardId"]
+        })),
+        tool_def("decompose_tasks", "Create multiple Kanban cards from a list of decomposed tasks", serde_json::json!({
+            "type": "object",
+            "properties": {
+                "boardId": { "type": "string", "description": "Board ID" },
+                "workspaceId": { "type": "string", "description": "Workspace ID" },
+                "columnId": { "type": "string", "description": "Target column ID" },
+                "tasks": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "title": { "type": "string" },
+                            "description": { "type": "string" },
+                            "priority": { "type": "string" },
+                            "labels": { "type": "array", "items": { "type": "string" } }
+                        },
+                        "required": ["title"]
+                    }
+                }
+            },
+            "required": ["tasks"]
         })),
     ]
 }
@@ -1145,420 +1168,276 @@ async fn execute_tool(state: &AppState, name: &str, args: &serde_json::Value) ->
             }))
         }
         // ── Kanban tools ─────────────────────────────────────────────────
-        "create_board" => {
-            let name = args.get("name").and_then(|v| v.as_str()).unwrap_or("Board");
-            let columns: Option<Vec<String>> =
-                args.get("columns").and_then(|v| v.as_array()).map(|arr| {
-                    arr.iter()
-                        .filter_map(|v| v.as_str().map(String::from))
-                        .collect()
-                });
-
-            let mut board = crate::models::kanban::default_kanban_board(workspace_id.to_string());
-            board.id = uuid::Uuid::new_v4().to_string();
-            board.name = name.to_string();
-            board.is_default = false;
-
-            if let Some(col_names) = columns {
-                board.columns = col_names
-                    .iter()
-                    .enumerate()
-                    .map(|(i, n)| crate::models::kanban::KanbanColumn {
-                        id: n.to_lowercase().replace(' ', "-"),
-                        name: n.clone(),
-                        color: None,
-                        position: i as i64,
-                        stage: "backlog".to_string(),
-                        automation: None,
+        "create_board" => match rpc_tool_result(
+            state,
+            "kanban.createBoard",
+            serde_json::json!({
+                "workspaceId": workspace_id,
+                "name": args.get("name").and_then(|v| v.as_str()).unwrap_or("Board"),
+                "columns": args.get("columns").cloned(),
+            }),
+        )
+        .await
+        {
+            Ok(result) => {
+                let board = result.get("board").cloned().unwrap_or_default();
+                let columns = board
+                    .get("columns")
+                    .and_then(|value| value.as_array())
+                    .cloned()
+                    .unwrap_or_default()
+                    .into_iter()
+                    .map(|column| {
+                        serde_json::json!({
+                            "id": column.get("id").cloned().unwrap_or_default(),
+                            "name": column.get("name").cloned().unwrap_or_default()
+                        })
                     })
-                    .collect();
-            }
-
-            match state.kanban_store.create(&board).await {
-                Ok(()) => tool_result_json(&serde_json::json!({
-                    "boardId": board.id,
-                    "name": board.name,
-                    "columns": board.columns.iter().map(|c| serde_json::json!({ "id": c.id, "name": c.name })).collect::<Vec<_>>()
-                })),
-                Err(e) => tool_result_error(&e.to_string()),
-            }
-        }
-        "list_boards" => match state.kanban_store.list_by_workspace(workspace_id).await {
-            Ok(boards) => tool_result_json(&serde_json::json!(boards
-                .iter()
-                .map(|b| serde_json::json!({
-                    "id": b.id,
-                    "name": b.name,
-                    "isDefault": b.is_default,
-                    "columnCount": b.columns.len()
+                    .collect::<Vec<_>>();
+                tool_result_json(&serde_json::json!({
+                    "boardId": board.get("id").cloned().unwrap_or_default(),
+                    "name": board.get("name").cloned().unwrap_or_default(),
+                    "columns": columns
                 }))
-                .collect::<Vec<_>>())),
-            Err(e) => tool_result_error(&e.to_string()),
+            }
+            Err(error) => tool_result_error(&error),
         },
-        "get_board" => {
-            let board_id = args.get("boardId").and_then(|v| v.as_str()).unwrap_or("");
-            match state.kanban_store.get(board_id).await {
-                Ok(Some(board)) => {
-                    let tasks = state
-                        .task_store
-                        .list_by_workspace(&board.workspace_id)
-                        .await
-                        .unwrap_or_default();
-                    let board_tasks: Vec<_> = tasks
-                        .iter()
-                        .filter(|t| t.board_id.as_deref() == Some(board_id))
-                        .collect();
-
-                    tool_result_json(&serde_json::json!({
-                        "id": board.id,
-                        "name": board.name,
-                        "isDefault": board.is_default,
-                        "columns": board.columns.iter().map(|c| {
-                            let col_tasks: Vec<_> = board_tasks.iter()
-                                .filter(|t| t.column_id.as_deref().unwrap_or("backlog") == c.id)
-                                .map(|t| task_to_card(t))
-                                .collect();
-                            serde_json::json!({
-                                "id": c.id,
-                                "name": c.name,
-                                "color": c.color,
-                                "position": c.position,
-                                "cards": col_tasks
-                            })
-                        }).collect::<Vec<_>>()
-                    }))
-                }
-                Ok(None) => tool_result_error(&format!("Board not found: {}", board_id)),
-                Err(e) => tool_result_error(&e.to_string()),
+        "list_boards" => match rpc_tool_result(
+            state,
+            "kanban.listBoards",
+            serde_json::json!({ "workspaceId": workspace_id }),
+        )
+        .await
+        {
+            Ok(result) => {
+                let boards = result
+                    .get("boards")
+                    .cloned()
+                    .unwrap_or_else(|| serde_json::json!([]));
+                tool_result_json(&boards)
             }
-        }
-        "create_card" => {
-            let board_id = args.get("boardId").and_then(|v| v.as_str()).unwrap_or("");
-            let column_id = args
-                .get("columnId")
-                .and_then(|v| v.as_str())
-                .unwrap_or("backlog");
-            let title = args.get("title").and_then(|v| v.as_str()).unwrap_or("");
-            let description = args.get("description").and_then(|v| v.as_str());
-            let priority = args.get("priority").and_then(|v| v.as_str());
-            let labels: Vec<String> = args
-                .get("labels")
-                .and_then(|v| v.as_array())
-                .map(|arr| {
-                    arr.iter()
-                        .filter_map(|v| v.as_str().map(String::from))
-                        .collect()
-                })
-                .unwrap_or_default();
-
-            let tasks = state
-                .task_store
-                .list_by_workspace(workspace_id)
-                .await
-                .unwrap_or_default();
-            let position = tasks
-                .iter()
-                .filter(|t| {
-                    t.board_id.as_deref() == Some(board_id)
-                        && t.column_id.as_deref() == Some(column_id)
-                })
-                .count() as i64;
-
-            let mut task = crate::models::task::Task::new(
-                uuid::Uuid::new_v4().to_string(),
-                title.to_string(),
-                description.unwrap_or("").to_string(),
-                workspace_id.to_string(),
-                None,
-                None,
-                None,
-                None,
-                None,
-                None,
-                None,
-            );
-            task.board_id = Some(board_id.to_string());
-            task.column_id = Some(column_id.to_string());
-            task.position = position;
-            task.status = column_id_to_task_status(Some(column_id));
-            task.priority = priority.and_then(crate::models::task::TaskPriority::from_str);
-            task.labels = labels;
-
-            match state.task_store.save(&task).await {
-                Ok(()) => tool_result_json(&task_to_card(&task)),
-                Err(e) => tool_result_error(&e.to_string()),
+            Err(error) => tool_result_error(&error),
+        },
+        "get_board" => match rpc_tool_result(
+            state,
+            "kanban.getBoard",
+            serde_json::json!({
+                "boardId": args.get("boardId").and_then(|v| v.as_str()).unwrap_or("")
+            }),
+        )
+        .await
+        {
+            Ok(result) => tool_result_json(&result),
+            Err(error) => tool_result_error(&error),
+        },
+        "create_card" => match rpc_tool_result(
+            state,
+            "kanban.createCard",
+            serde_json::json!({
+                "workspaceId": workspace_id,
+                "boardId": args.get("boardId").cloned(),
+                "columnId": args.get("columnId").cloned(),
+                "title": args.get("title").and_then(|v| v.as_str()).unwrap_or(""),
+                "description": args.get("description").cloned(),
+                "priority": args.get("priority").cloned(),
+                "labels": args.get("labels").cloned(),
+            }),
+        )
+        .await
+        {
+            Ok(result) => {
+                let card = result
+                    .get("card")
+                    .cloned()
+                    .unwrap_or_else(|| serde_json::json!({}));
+                tool_result_json(&card)
             }
-        }
-        "move_card" => {
-            let card_id = args.get("cardId").and_then(|v| v.as_str()).unwrap_or("");
-            let target_column_id = args
-                .get("targetColumnId")
-                .and_then(|v| v.as_str())
-                .unwrap_or("");
-            let position = args.get("position").and_then(|v| v.as_i64());
-
-            match state.task_store.get(card_id).await {
-                Ok(Some(mut task)) => {
-                    task.column_id = Some(target_column_id.to_string());
-                    task.status = column_id_to_task_status(Some(target_column_id));
-                    if let Some(pos) = position {
-                        task.position = pos;
-                    }
-                    task.updated_at = chrono::Utc::now();
-
-                    match state.task_store.save(&task).await {
-                        Ok(()) => tool_result_json(&task_to_card(&task)),
-                        Err(e) => tool_result_error(&e.to_string()),
-                    }
-                }
-                Ok(None) => tool_result_error(&format!("Card not found: {}", card_id)),
-                Err(e) => tool_result_error(&e.to_string()),
+            Err(error) => tool_result_error(&error),
+        },
+        "move_card" => match rpc_tool_result(
+            state,
+            "kanban.moveCard",
+            serde_json::json!({
+                "cardId": args.get("cardId").and_then(|v| v.as_str()).unwrap_or(""),
+                "targetColumnId": args.get("targetColumnId").and_then(|v| v.as_str()).unwrap_or(""),
+                "position": args.get("position").cloned(),
+            }),
+        )
+        .await
+        {
+            Ok(result) => {
+                let card = result
+                    .get("card")
+                    .cloned()
+                    .unwrap_or_else(|| serde_json::json!({}));
+                tool_result_json(&card)
             }
-        }
-        "update_card" => {
-            let card_id = args.get("cardId").and_then(|v| v.as_str()).unwrap_or("");
-            let title = args.get("title").and_then(|v| v.as_str());
-            let description = args.get("description").and_then(|v| v.as_str());
-            let priority = args.get("priority").and_then(|v| v.as_str());
-            let labels: Option<Vec<String>> =
-                args.get("labels").and_then(|v| v.as_array()).map(|arr| {
-                    arr.iter()
-                        .filter_map(|v| v.as_str().map(String::from))
-                        .collect()
-                });
-
-            match state.task_store.get(card_id).await {
-                Ok(Some(mut task)) => {
-                    if let Some(t) = title {
-                        task.title = t.to_string();
-                    }
-                    if let Some(d) = description {
-                        task.objective = d.to_string();
-                    }
-                    if let Some(p) = priority {
-                        task.priority = crate::models::task::TaskPriority::from_str(p);
-                    }
-                    if let Some(l) = labels {
-                        task.labels = l;
-                    }
-                    task.updated_at = chrono::Utc::now();
-
-                    match state.task_store.save(&task).await {
-                        Ok(()) => tool_result_json(&task_to_card(&task)),
-                        Err(e) => tool_result_error(&e.to_string()),
-                    }
-                }
-                Ok(None) => tool_result_error(&format!("Card not found: {}", card_id)),
-                Err(e) => tool_result_error(&e.to_string()),
+            Err(error) => tool_result_error(&error),
+        },
+        "update_card" => match rpc_tool_result(
+            state,
+            "kanban.updateCard",
+            serde_json::json!({
+                "cardId": args.get("cardId").and_then(|v| v.as_str()).unwrap_or(""),
+                "title": args.get("title").cloned(),
+                "description": args.get("description").cloned(),
+                "priority": args.get("priority").cloned(),
+                "labels": args.get("labels").cloned(),
+            }),
+        )
+        .await
+        {
+            Ok(result) => {
+                let card = result
+                    .get("card")
+                    .cloned()
+                    .unwrap_or_else(|| serde_json::json!({}));
+                tool_result_json(&card)
             }
-        }
-        "delete_card" => {
-            let card_id = args.get("cardId").and_then(|v| v.as_str()).unwrap_or("");
-            match state.task_store.delete(card_id).await {
-                Ok(()) => {
-                    tool_result_json(&serde_json::json!({ "deleted": true, "cardId": card_id }))
-                }
-                Err(e) => tool_result_error(&e.to_string()),
+            Err(error) => tool_result_error(&error),
+        },
+        "delete_card" => match rpc_tool_result(
+            state,
+            "kanban.deleteCard",
+            serde_json::json!({
+                "cardId": args.get("cardId").and_then(|v| v.as_str()).unwrap_or("")
+            }),
+        )
+        .await
+        {
+            Ok(result) => tool_result_json(&result),
+            Err(error) => tool_result_error(&error),
+        },
+        "create_column" => match rpc_tool_result(
+            state,
+            "kanban.createColumn",
+            serde_json::json!({
+                "boardId": args.get("boardId").and_then(|v| v.as_str()).unwrap_or(""),
+                "name": args.get("name").and_then(|v| v.as_str()).unwrap_or(""),
+                "color": args.get("color").cloned(),
+            }),
+        )
+        .await
+        {
+            Ok(result) => {
+                let board = result.get("board").cloned().unwrap_or_default();
+                let column = board
+                    .get("columns")
+                    .and_then(|value| value.as_array())
+                    .and_then(|columns| columns.last())
+                    .cloned()
+                    .unwrap_or_default();
+                tool_result_json(&serde_json::json!({
+                    "columnId": column.get("id").cloned().unwrap_or_default(),
+                    "name": column.get("name").cloned().unwrap_or_default(),
+                    "position": column.get("position").cloned().unwrap_or_default()
+                }))
             }
-        }
-        "create_column" => {
-            let board_id = args.get("boardId").and_then(|v| v.as_str()).unwrap_or("");
-            let name = args.get("name").and_then(|v| v.as_str()).unwrap_or("");
-            let color = args.get("color").and_then(|v| v.as_str());
-
-            match state.kanban_store.get(board_id).await {
-                Ok(Some(mut board)) => {
-                    let column_id = name.to_lowercase().replace(' ', "-");
-                    if board.columns.iter().any(|c| c.id == column_id) {
-                        return tool_result_error(&format!("Column already exists: {}", column_id));
-                    }
-
-                    let new_column = crate::models::kanban::KanbanColumn {
-                        id: column_id.clone(),
-                        name: name.to_string(),
-                        color: color.map(String::from),
-                        position: board.columns.len() as i64,
-                        stage: "backlog".to_string(),
-                        automation: None,
-                    };
-                    board.columns.push(new_column);
-                    board.updated_at = chrono::Utc::now();
-
-                    // Note: KanbanStore doesn't have an update method, so we need to handle this differently
-                    // For now, return success with the column info
-                    tool_result_json(&serde_json::json!({
-                        "columnId": column_id,
-                        "name": name,
-                        "position": board.columns.len() - 1
-                    }))
-                }
-                Ok(None) => tool_result_error(&format!("Board not found: {}", board_id)),
-                Err(e) => tool_result_error(&e.to_string()),
+            Err(error) => tool_result_error(&error),
+        },
+        "delete_column" => match rpc_tool_result(
+            state,
+            "kanban.deleteColumn",
+            serde_json::json!({
+                "boardId": args.get("boardId").and_then(|v| v.as_str()).unwrap_or(""),
+                "columnId": args.get("columnId").and_then(|v| v.as_str()).unwrap_or(""),
+                "deleteCards": args.get("deleteCards").cloned(),
+            }),
+        )
+        .await
+        {
+            Ok(result) => tool_result_json(&serde_json::json!({
+                "deleted": result.get("deleted").cloned().unwrap_or(serde_json::json!(false)),
+                "columnId": result.get("columnId").cloned().unwrap_or_default(),
+                "cardsDeleted": result.get("cardsDeleted").cloned().unwrap_or(serde_json::json!(0)),
+                "cardsMoved": result.get("cardsMoved").cloned().unwrap_or(serde_json::json!(0)),
+            })),
+            Err(error) => tool_result_error(&error),
+        },
+        "search_cards" => match rpc_tool_result(
+            state,
+            "kanban.searchCards",
+            serde_json::json!({
+                "workspaceId": workspace_id,
+                "query": args.get("query").and_then(|v| v.as_str()).unwrap_or(""),
+                "boardId": args.get("boardId").cloned(),
+            }),
+        )
+        .await
+        {
+            Ok(result) => {
+                let cards = result
+                    .get("cards")
+                    .cloned()
+                    .unwrap_or_else(|| serde_json::json!([]));
+                tool_result_json(&cards)
             }
-        }
-        "delete_column" => {
-            let column_id = args.get("columnId").and_then(|v| v.as_str()).unwrap_or("");
-            let board_id = args.get("boardId").and_then(|v| v.as_str()).unwrap_or("");
-            let delete_cards = args
-                .get("deleteCards")
-                .and_then(|v| v.as_bool())
-                .unwrap_or(false);
-
-            match state.kanban_store.get(board_id).await {
-                Ok(Some(board)) => {
-                    if !board.columns.iter().any(|c| c.id == column_id) {
-                        return tool_result_error(&format!("Column not found: {}", column_id));
-                    }
-
-                    let tasks = state
-                        .task_store
-                        .list_by_workspace(&board.workspace_id)
-                        .await
-                        .unwrap_or_default();
-                    let column_tasks: Vec<_> = tasks
-                        .iter()
-                        .filter(|t| {
-                            t.board_id.as_deref() == Some(board_id)
-                                && t.column_id.as_deref() == Some(column_id)
-                        })
-                        .collect();
-
-                    let mut deleted_count = 0;
-                    let mut moved_count = 0;
-
-                    for task in column_tasks {
-                        if delete_cards {
-                            let _ = state.task_store.delete(&task.id).await;
-                            deleted_count += 1;
-                        } else {
-                            let mut updated_task = task.clone();
-                            updated_task.column_id = Some("backlog".to_string());
-                            updated_task.updated_at = chrono::Utc::now();
-                            let _ = state.task_store.save(&updated_task).await;
-                            moved_count += 1;
-                        }
-                    }
-
-                    tool_result_json(&serde_json::json!({
-                        "deleted": true,
-                        "columnId": column_id,
-                        "cardsDeleted": deleted_count,
-                        "cardsMoved": moved_count
-                    }))
-                }
-                Ok(None) => tool_result_error(&format!("Board not found: {}", board_id)),
-                Err(e) => tool_result_error(&e.to_string()),
-            }
-        }
-        "search_cards" => {
-            let query = args.get("query").and_then(|v| v.as_str()).unwrap_or("");
-            let board_id = args.get("boardId").and_then(|v| v.as_str());
-            let query_lower = query.to_lowercase();
-
-            let tasks = state
-                .task_store
-                .list_by_workspace(workspace_id)
-                .await
-                .unwrap_or_default();
-            let matching: Vec<_> = tasks
-                .iter()
-                .filter(|t| {
-                    if let Some(bid) = board_id {
-                        if t.board_id.as_deref() != Some(bid) {
-                            return false;
-                        }
-                    }
-                    if t.board_id.is_none() {
-                        return false;
-                    }
-
-                    let title_match = t.title.to_lowercase().contains(&query_lower);
-                    let label_match = t
-                        .labels
-                        .iter()
-                        .any(|l| l.to_lowercase().contains(&query_lower));
-                    let assignee_match = t
-                        .assignee
-                        .as_ref()
-                        .map(|a| a.to_lowercase().contains(&query_lower))
-                        .unwrap_or(false);
-
-                    title_match || label_match || assignee_match
-                })
-                .map(task_to_card)
-                .collect();
-
-            tool_result_json(&serde_json::json!(matching))
-        }
-        "list_cards_by_column" => {
-            let column_id = args.get("columnId").and_then(|v| v.as_str()).unwrap_or("");
-            let board_id = args.get("boardId").and_then(|v| v.as_str()).unwrap_or("");
-
-            match state.kanban_store.get(board_id).await {
-                Ok(Some(board)) => {
-                    let column = board.columns.iter().find(|c| c.id == column_id);
-                    if column.is_none() {
-                        return tool_result_error(&format!("Column not found: {}", column_id));
-                    }
-
-                    let tasks = state
-                        .task_store
-                        .list_by_workspace(&board.workspace_id)
-                        .await
-                        .unwrap_or_default();
-                    let mut column_tasks: Vec<_> = tasks
-                        .iter()
-                        .filter(|t| {
-                            t.board_id.as_deref() == Some(board_id)
-                                && t.column_id.as_deref().unwrap_or("backlog") == column_id
-                        })
-                        .collect();
-                    column_tasks.sort_by_key(|t| t.position);
-
-                    tool_result_json(&serde_json::json!({
-                        "columnId": column_id,
-                        "columnName": column.map(|c| &c.name),
-                        "cards": column_tasks.iter().map(|t| task_to_card(t)).collect::<Vec<_>>()
-                    }))
-                }
-                Ok(None) => tool_result_error(&format!("Board not found: {}", board_id)),
-                Err(e) => tool_result_error(&e.to_string()),
-            }
-        }
+            Err(error) => tool_result_error(&error),
+        },
+        "list_cards_by_column" => match rpc_tool_result(
+            state,
+            "kanban.listCardsByColumn",
+            serde_json::json!({
+                "workspaceId": workspace_id,
+                "columnId": args.get("columnId").and_then(|v| v.as_str()).unwrap_or(""),
+                "boardId": args.get("boardId").cloned(),
+            }),
+        )
+        .await
+        {
+            Ok(result) => tool_result_json(&result),
+            Err(error) => tool_result_error(&error),
+        },
+        "decompose_tasks" => match rpc_tool_result(
+            state,
+            "kanban.decomposeTasks",
+            serde_json::json!({
+                "workspaceId": workspace_id,
+                "boardId": args.get("boardId").cloned(),
+                "columnId": args.get("columnId").cloned(),
+                "tasks": args.get("tasks").cloned().unwrap_or_else(|| serde_json::json!([])),
+            }),
+        )
+        .await
+        {
+            Ok(result) => tool_result_json(&result),
+            Err(error) => tool_result_error(&error),
+        },
         _ => tool_result_error(&format!("Unknown tool: {}", name)),
     }
-}
-
-fn column_id_to_task_status(column_id: Option<&str>) -> crate::models::task::TaskStatus {
-    match column_id.unwrap_or("backlog").to_ascii_lowercase().as_str() {
-        "dev" => crate::models::task::TaskStatus::InProgress,
-        "review" => crate::models::task::TaskStatus::ReviewRequired,
-        "blocked" => crate::models::task::TaskStatus::Blocked,
-        "done" => crate::models::task::TaskStatus::Completed,
-        _ => crate::models::task::TaskStatus::Pending,
-    }
-}
-
-fn task_to_card(task: &crate::models::task::Task) -> serde_json::Value {
-    serde_json::json!({
-        "id": task.id,
-        "title": task.title,
-        "description": task.objective,
-        "status": task.status.as_str(),
-        "columnId": task.column_id.as_deref().unwrap_or("backlog"),
-        "position": task.position,
-        "priority": task.priority.as_ref().map(|p| p.as_str()),
-        "labels": task.labels,
-        "assignee": task.assignee,
-        "createdAt": task.created_at.to_rfc3339(),
-        "updatedAt": task.updated_at.to_rfc3339()
-    })
 }
 
 fn tool_result_text(text: &str) -> serde_json::Value {
     serde_json::json!({
         "content": [{ "type": "text", "text": text }]
     })
+}
+
+async fn rpc_tool_result(
+    state: &AppState,
+    method: &str,
+    params: serde_json::Value,
+) -> Result<serde_json::Value, String> {
+    let rpc = RpcRouter::new(state.clone());
+    let response = rpc
+        .handle_value(serde_json::json!({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": method,
+            "params": params
+        }))
+        .await;
+
+    if let Some(result) = response.get("result") {
+        Ok(result.clone())
+    } else {
+        Err(response
+            .get("error")
+            .and_then(|value| value.get("message"))
+            .and_then(|value| value.as_str())
+            .unwrap_or("RPC error")
+            .to_string())
+    }
 }
 
 fn tool_result_json(value: &serde_json::Value) -> serde_json::Value {

@@ -1,6 +1,11 @@
 use chrono::Utc;
 
 use crate::error::ServerError;
+use routa_core::kanban::{
+    ensure_task_board_context, set_task_column, sync_task_column_from_status,
+    sync_task_status_from_column,
+};
+use crate::models::kanban::{column_id_to_task_status, task_status_to_column_id};
 use crate::models::task::{Task, TaskPriority, TaskStatus};
 use crate::state::AppState;
 
@@ -44,11 +49,6 @@ impl TaskApplicationService {
         } = command;
 
         let workspace_id = workspace_id.unwrap_or_else(|| "default".to_string());
-        let default_board = self
-            .state
-            .kanban_store
-            .ensure_default_board(&workspace_id)
-            .await?;
 
         let mut task = Task::new(
             uuid::Uuid::new_v4().to_string(),
@@ -63,9 +63,12 @@ impl TaskApplicationService {
             dependencies,
             parallel_group,
         );
-        task.board_id = board_id.or_else(|| Some(default_board.id.clone()));
-        task.column_id = column_id.or_else(|| Some("backlog".to_string()));
-        task.status = column_id_to_task_status(task.column_id.as_deref());
+        task.board_id = board_id;
+        if let Some(column_id) = column_id {
+            set_task_column(&mut task, column_id);
+        }
+        ensure_task_board_context(&self.state, &mut task).await?;
+        sync_task_status_from_column(&mut task);
         task.position = position.unwrap_or(0);
         task.priority = parse_priority(priority)?;
         task.labels = sanitize_labels(labels.unwrap_or_default());
@@ -217,10 +220,10 @@ impl TaskApplicationService {
         }
 
         if has_column_update && !has_status_update {
-            task.status = column_id_to_task_status(task.column_id.as_deref());
+            sync_task_status_from_column(&mut task);
         }
         if has_status_update && !has_column_update {
-            task.column_id = Some(task_status_to_column_id(&task.status).to_string());
+            sync_task_column_from_status(&mut task);
         }
 
         let entering_dev = task.column_id.as_deref() == Some("dev")
@@ -400,26 +403,6 @@ fn sanitize_labels(labels: Vec<String>) -> Vec<String> {
         }
     }
     sanitized
-}
-
-fn column_id_to_task_status(column_id: Option<&str>) -> TaskStatus {
-    match column_id.unwrap_or("backlog").to_ascii_lowercase().as_str() {
-        "dev" => TaskStatus::InProgress,
-        "review" => TaskStatus::ReviewRequired,
-        "blocked" => TaskStatus::Blocked,
-        "done" => TaskStatus::Completed,
-        _ => TaskStatus::Pending,
-    }
-}
-
-fn task_status_to_column_id(status: &TaskStatus) -> &'static str {
-    match status {
-        TaskStatus::InProgress => "dev",
-        TaskStatus::ReviewRequired => "review",
-        TaskStatus::Blocked => "blocked",
-        TaskStatus::Completed => "done",
-        _ => "backlog",
-    }
 }
 
 #[cfg(test)]

@@ -6,6 +6,7 @@ use axum::{
 use chrono::Utc;
 use reqwest::header::{ACCEPT, AUTHORIZATION, CONTENT_TYPE, USER_AGENT};
 use serde::Deserialize;
+use routa_core::kanban::set_task_column;
 use std::process::Command;
 
 use crate::application::tasks::{CreateTaskCommand, TaskApplicationService, UpdateTaskCommand};
@@ -312,8 +313,7 @@ async fn update_task(
                         task.worktree_id = Some(worktree_id);
                     }
                     Err(err) => {
-                        task.status = crate::models::task::TaskStatus::Blocked;
-                        task.column_id = Some("blocked".to_string());
+                        set_task_column(&mut task, "blocked");
                         task.last_sync_error = Some(format!("Worktree creation failed: {}", err));
                         state.task_store.save(&task).await?;
                         return Ok(Json(serde_json::json!({ "task": task })));
