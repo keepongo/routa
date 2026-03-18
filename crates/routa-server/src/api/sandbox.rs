@@ -225,3 +225,85 @@ async fn resolve_policy_context(
 
     Ok(Some(context))
 }
+
+#[cfg(test)]
+mod tests {
+    use std::sync::Arc;
+
+    use crate::state::AppStateInner;
+    use routa_core::{
+        db::Database,
+        models::{codebase::Codebase, workspace::Workspace},
+        sandbox::{CreateSandboxRequest, SandboxNetworkMode, SandboxPolicyInput},
+    };
+
+    use super::resolve_create_request;
+
+    #[tokio::test]
+    async fn resolve_create_request_loads_trusted_workspace_config_from_default_codebase() {
+        let temp = tempfile::tempdir().expect("tempdir should exist");
+        let repo = temp.path().join("repo");
+        let output = repo.join("output");
+        std::fs::create_dir_all(&output).expect("output directory should exist");
+        std::fs::create_dir_all(repo.join(".routa")).expect("config directory should exist");
+        std::fs::write(
+            repo.join(".routa").join("sandbox.json"),
+            r#"{"networkMode":"none","readWritePaths":["output"]}"#,
+        )
+        .expect("workspace config should exist");
+
+        let db = Database::open_in_memory().expect("db should open");
+        let state = Arc::new(AppStateInner::new(db));
+        state
+            .workspace_store
+            .save(&Workspace::new(
+                "ws-1".to_string(),
+                "Workspace".to_string(),
+                None,
+            ))
+            .await
+            .expect("workspace should save");
+        state
+            .codebase_store
+            .save(&Codebase::new(
+                "cb-1".to_string(),
+                "ws-1".to_string(),
+                repo.to_string_lossy().to_string(),
+                Some("main".to_string()),
+                Some("default".to_string()),
+                true,
+            ))
+            .await
+            .expect("codebase should save");
+
+        let resolved = resolve_create_request(
+            &state,
+            CreateSandboxRequest {
+                lang: "python".to_string(),
+                policy: Some(SandboxPolicyInput {
+                    workspace_id: Some("ws-1".to_string()),
+                    trust_workspace_config: true,
+                    ..Default::default()
+                }),
+            },
+        )
+        .await
+        .expect("request should resolve");
+
+        let policy = resolved.policy.expect("policy should be resolved");
+        assert_eq!(policy.network_mode, SandboxNetworkMode::None);
+        assert!(policy.read_write_paths.contains(
+            &std::fs::canonicalize(&output)
+                .expect("output should canonicalize")
+                .to_string_lossy()
+                .to_string()
+        ));
+        assert_eq!(
+            policy
+                .workspace_config
+                .expect("workspace config metadata should exist")
+                .reason,
+            "loaded"
+        );
+    }
+}

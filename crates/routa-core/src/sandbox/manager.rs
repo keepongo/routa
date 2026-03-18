@@ -527,6 +527,7 @@ mod tests {
                     reason: Some("scopeOverride".to_string()),
                 },
             ],
+            workspace_config: None,
             notes: vec![],
         };
 

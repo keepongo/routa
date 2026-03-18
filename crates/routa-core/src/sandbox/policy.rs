@@ -8,6 +8,10 @@ pub const SANDBOX_SCOPE_CONTAINER_ROOT: &str = "/workspace";
 const SANDBOX_EXTRA_READONLY_ROOT: &str = "/workspace-extra/ro";
 const SANDBOX_EXTRA_READWRITE_ROOT: &str = "/workspace-extra/rw";
 
+fn is_false(value: &bool) -> bool {
+    !*value
+}
+
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
 #[serde(rename_all = "camelCase")]
 pub enum SandboxNetworkMode {
@@ -69,6 +73,8 @@ pub struct SandboxPolicyInput {
     pub env_mode: Option<SandboxEnvMode>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub env_allowlist: Vec<String>,
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub trust_workspace_config: bool,
 }
 
 impl SandboxPolicyInput {
@@ -81,6 +87,7 @@ impl SandboxPolicyInput {
             && self.network_mode.is_none()
             && self.env_mode.is_none()
             && self.env_allowlist.is_empty()
+            && !self.trust_workspace_config
     }
 
     pub fn resolve(
@@ -92,8 +99,10 @@ impl SandboxPolicyInput {
             .and_then(|ctx| ctx.workspace_root.as_ref())
             .map(|root| canonicalize_existing_path(root))
             .transpose()?;
+        let workspace_config = resolve_workspace_config(self, derived_root.as_deref())?;
+        let effective_input = merge_workspace_config(self, workspace_config.as_ref());
 
-        let host_workdir = match self.workdir.as_deref() {
+        let host_workdir = match effective_input.workdir.as_deref() {
             Some(raw) => resolve_user_path(raw, derived_root.as_deref())?,
             None => derived_root.clone().ok_or_else(|| {
                 "Sandbox policy requires either policy.workdir or a workspace/codebase root."
@@ -111,6 +120,8 @@ impl SandboxPolicyInput {
         }
 
         let mut notes = Vec::new();
+        record_workspace_config_note(workspace_config.as_ref(), &mut notes);
+
         if derived_root.is_some() {
             notes.push(format!(
                 "Resolved scope root from workspace/codebase context: {}",
@@ -123,12 +134,13 @@ impl SandboxPolicyInput {
             ));
         }
 
-        let mut read_only_paths = resolve_grant_paths(&self.read_only_paths, &scope_root)?;
-        let read_write_paths = resolve_grant_paths(&self.read_write_paths, &scope_root)?;
+        let mut read_only_paths =
+            resolve_grant_paths(&effective_input.read_only_paths, &scope_root)?;
+        let read_write_paths = resolve_grant_paths(&effective_input.read_write_paths, &scope_root)?;
 
         let read_write_set: BTreeSet<PathBuf> = read_write_paths.iter().cloned().collect();
         read_only_paths.retain(|path| !read_write_set.contains(path));
-        if self.read_only_paths.len() != read_only_paths.len() {
+        if effective_input.read_only_paths.len() != read_only_paths.len() {
             notes.push(
                 "Dropped duplicate read-only grants that were also present in read-write grants."
                     .to_string(),
@@ -168,7 +180,7 @@ impl SandboxPolicyInput {
             SandboxMountAccess::ReadWrite,
         ));
 
-        let env_allowlist = self
+        let env_allowlist = effective_input
             .env_allowlist
             .iter()
             .map(|name| name.trim())
@@ -192,10 +204,11 @@ impl SandboxPolicyInput {
                 .into_iter()
                 .map(|path| path.to_string_lossy().to_string())
                 .collect(),
-            network_mode: self.network_mode.unwrap_or_default(),
-            env_mode: self.env_mode.unwrap_or_default(),
+            network_mode: effective_input.network_mode.unwrap_or_default(),
+            env_mode: effective_input.env_mode.unwrap_or_default(),
             env_allowlist,
             mounts,
+            workspace_config: workspace_config.map(|entry| entry.descriptor),
             notes,
         })
     }
@@ -227,8 +240,42 @@ pub struct ResolvedSandboxPolicy {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub env_allowlist: Vec<String>,
     pub mounts: Vec<SandboxMount>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub workspace_config: Option<ResolvedSandboxWorkspaceConfig>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub notes: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ResolvedSandboxWorkspaceConfig {
+    pub path: String,
+    pub trusted: bool,
+    pub loaded: bool,
+    pub reason: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+struct WorkspaceSandboxConfigFile {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    workdir: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    read_only_paths: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    read_write_paths: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    network_mode: Option<SandboxNetworkMode>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    env_mode: Option<SandboxEnvMode>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    env_allowlist: Vec<String>,
+}
+
+#[derive(Debug, Clone)]
+struct WorkspaceConfigResolution {
+    descriptor: ResolvedSandboxWorkspaceConfig,
+    config: Option<WorkspaceSandboxConfigFile>,
 }
 
 fn resolve_grant_paths(raw_paths: &[String], scope_root: &Path) -> Result<Vec<PathBuf>, String> {
@@ -237,6 +284,130 @@ fn resolve_grant_paths(raw_paths: &[String], scope_root: &Path) -> Result<Vec<Pa
         .map(|raw| resolve_user_path(raw, Some(scope_root)))
         .collect::<Result<BTreeSet<_>, _>>()
         .map(|set| set.into_iter().collect())
+}
+
+fn resolve_workspace_config(
+    policy: &SandboxPolicyInput,
+    derived_root: Option<&Path>,
+) -> Result<Option<WorkspaceConfigResolution>, String> {
+    let Some(root) = derived_root else {
+        return Ok(None);
+    };
+
+    let config_path = root.join(".routa").join("sandbox.json");
+    let config_path_string = config_path.to_string_lossy().to_string();
+    if !config_path.exists() {
+        return Ok(Some(WorkspaceConfigResolution {
+            descriptor: ResolvedSandboxWorkspaceConfig {
+                path: config_path_string,
+                trusted: policy.trust_workspace_config,
+                loaded: false,
+                reason: "notFound".to_string(),
+            },
+            config: None,
+        }));
+    }
+
+    if !policy.trust_workspace_config {
+        return Ok(Some(WorkspaceConfigResolution {
+            descriptor: ResolvedSandboxWorkspaceConfig {
+                path: config_path_string,
+                trusted: false,
+                loaded: false,
+                reason: "trustDisabled".to_string(),
+            },
+            config: None,
+        }));
+    }
+
+    let raw = fs::read_to_string(&config_path).map_err(|err| {
+        format!(
+            "Failed to read trusted workspace sandbox config '{}': {}",
+            config_path.display(),
+            err
+        )
+    })?;
+    let config = serde_json::from_str::<WorkspaceSandboxConfigFile>(&raw).map_err(|err| {
+        format!(
+            "Failed to parse trusted workspace sandbox config '{}': {}",
+            config_path.display(),
+            err
+        )
+    })?;
+
+    Ok(Some(WorkspaceConfigResolution {
+        descriptor: ResolvedSandboxWorkspaceConfig {
+            path: config_path_string,
+            trusted: true,
+            loaded: true,
+            reason: "loaded".to_string(),
+        },
+        config: Some(config),
+    }))
+}
+
+fn merge_workspace_config(
+    policy: &SandboxPolicyInput,
+    workspace_config: Option<&WorkspaceConfigResolution>,
+) -> SandboxPolicyInput {
+    let Some(config) = workspace_config.and_then(|entry| entry.config.as_ref()) else {
+        return policy.clone();
+    };
+
+    let mut merged = policy.clone();
+    if merged.workdir.is_none() {
+        merged.workdir = config.workdir.clone();
+    }
+    merged.read_only_paths = merge_string_lists(&config.read_only_paths, &policy.read_only_paths);
+    merged.read_write_paths =
+        merge_string_lists(&config.read_write_paths, &policy.read_write_paths);
+    if merged.network_mode.is_none() {
+        merged.network_mode = config.network_mode;
+    }
+    if merged.env_mode.is_none() {
+        merged.env_mode = config.env_mode;
+    }
+    merged.env_allowlist = merge_string_lists(&config.env_allowlist, &policy.env_allowlist);
+
+    merged
+}
+
+fn merge_string_lists(base: &[String], overlay: &[String]) -> Vec<String> {
+    base.iter()
+        .chain(overlay.iter())
+        .map(|value| value.trim())
+        .filter(|value| !value.is_empty())
+        .map(ToOwned::to_owned)
+        .collect::<BTreeSet<_>>()
+        .into_iter()
+        .collect()
+}
+
+fn record_workspace_config_note(
+    workspace_config: Option<&WorkspaceConfigResolution>,
+    notes: &mut Vec<String>,
+) {
+    let Some(workspace_config) = workspace_config else {
+        return;
+    };
+
+    let descriptor = &workspace_config.descriptor;
+    let note = match descriptor.reason.as_str() {
+        "loaded" => format!(
+            "Loaded trusted workspace sandbox config: {}",
+            descriptor.path
+        ),
+        "trustDisabled" => format!(
+            "Ignored repo-local sandbox config because trustWorkspaceConfig is false: {}",
+            descriptor.path
+        ),
+        "notFound" => format!("No repo-local sandbox config found at {}", descriptor.path),
+        other => format!(
+            "Workspace sandbox config state '{}' for {}",
+            other, descriptor.path
+        ),
+    };
+    notes.push(note);
 }
 
 fn resolve_user_path(raw_path: &str, base_dir: Option<&Path>) -> Result<PathBuf, String> {
@@ -395,6 +566,13 @@ mod tests {
         std::fs::create_dir_all(path).expect("directory should be created");
     }
 
+    fn write_file(path: &Path, content: &str) {
+        if let Some(parent) = path.parent() {
+            write_dir(parent);
+        }
+        std::fs::write(path, content).expect("file should be written");
+    }
+
     fn canonical(path: &Path) -> String {
         std::fs::canonicalize(path)
             .expect("path should be canonicalizable")
@@ -494,5 +672,118 @@ mod tests {
         let resolved = policy.resolve(None).expect("policy should resolve");
         assert!(resolved.read_only_paths.is_empty());
         assert_eq!(resolved.read_write_paths, vec![canonical(&cache)]);
+    }
+
+    #[test]
+    fn trusted_workspace_config_is_loaded_and_merged() {
+        let temp = tempfile::tempdir().expect("tempdir should exist");
+        let repo = temp.path().join("repo");
+        let scripts = repo.join("scripts");
+        let cache = repo.join("cache");
+        let output = repo.join("output");
+        write_dir(&scripts);
+        write_dir(&cache);
+        write_dir(&output);
+        write_file(
+            &repo.join(".routa").join("sandbox.json"),
+            r#"{
+                "workdir": "scripts",
+                "readOnlyPaths": ["cache"],
+                "networkMode": "none",
+                "envAllowlist": ["OPENAI_API_KEY"]
+            }"#,
+        );
+
+        let policy = SandboxPolicyInput {
+            trust_workspace_config: true,
+            read_write_paths: vec!["output".to_string()],
+            env_allowlist: vec!["LANG".to_string()],
+            ..Default::default()
+        };
+        let context = SandboxPolicyContext {
+            workspace_root: Some(repo.clone()),
+            ..Default::default()
+        };
+
+        let resolved = policy
+            .resolve(Some(context))
+            .expect("policy should resolve");
+
+        assert_eq!(resolved.host_workdir, canonical(&scripts));
+        assert_eq!(resolved.network_mode, SandboxNetworkMode::None);
+        assert_eq!(
+            resolved.env_allowlist,
+            vec!["LANG".to_string(), "OPENAI_API_KEY".to_string()]
+        );
+        assert_eq!(
+            resolved.workspace_config,
+            Some(ResolvedSandboxWorkspaceConfig {
+                path: canonical(&repo.join(".routa").join("sandbox.json")),
+                trusted: true,
+                loaded: true,
+                reason: "loaded".to_string(),
+            })
+        );
+        assert!(resolved.read_only_paths.contains(&canonical(&cache)));
+        assert!(resolved.read_write_paths.contains(&canonical(&output)));
+        assert!(resolved
+            .notes
+            .iter()
+            .any(|note| note.contains("Loaded trusted workspace sandbox config")));
+    }
+
+    #[test]
+    fn workspace_config_is_ignored_without_trust() {
+        let temp = tempfile::tempdir().expect("tempdir should exist");
+        let repo = temp.path().join("repo");
+        let scripts = repo.join("scripts");
+        write_dir(&scripts);
+        write_file(
+            &repo.join(".routa").join("sandbox.json"),
+            r#"{"workdir":"scripts","networkMode":"none"}"#,
+        );
+
+        let context = SandboxPolicyContext {
+            workspace_root: Some(repo.clone()),
+            ..Default::default()
+        };
+        let resolved = SandboxPolicyInput {
+            workdir: Some(repo.to_string_lossy().to_string()),
+            ..Default::default()
+        }
+        .resolve(Some(context))
+        .expect("policy should resolve");
+
+        assert_eq!(resolved.host_workdir, canonical(&repo));
+        assert_eq!(resolved.network_mode, SandboxNetworkMode::Bridge);
+        assert_eq!(
+            resolved.workspace_config,
+            Some(ResolvedSandboxWorkspaceConfig {
+                path: canonical(&repo.join(".routa").join("sandbox.json")),
+                trusted: false,
+                loaded: false,
+                reason: "trustDisabled".to_string(),
+            })
+        );
+    }
+
+    #[test]
+    fn invalid_trusted_workspace_config_fails_resolution() {
+        let temp = tempfile::tempdir().expect("tempdir should exist");
+        let repo = temp.path().join("repo");
+        write_dir(&repo);
+        write_file(&repo.join(".routa").join("sandbox.json"), "{not-json");
+
+        let err = SandboxPolicyInput {
+            trust_workspace_config: true,
+            ..Default::default()
+        }
+        .resolve(Some(SandboxPolicyContext {
+            workspace_root: Some(repo),
+            ..Default::default()
+        }))
+        .expect_err("invalid trusted config should fail");
+
+        assert!(err.contains("Failed to parse trusted workspace sandbox config"));
     }
 }

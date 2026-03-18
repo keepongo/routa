@@ -26,8 +26,9 @@ pub mod types;
 
 pub use manager::SandboxManager;
 pub use policy::{
-    ResolvedSandboxPolicy, SandboxEnvMode, SandboxMount, SandboxMountAccess, SandboxNetworkMode,
-    SandboxPolicyContext, SandboxPolicyInput, SANDBOX_SCOPE_CONTAINER_ROOT,
+    ResolvedSandboxPolicy, ResolvedSandboxWorkspaceConfig, SandboxEnvMode, SandboxMount,
+    SandboxMountAccess, SandboxNetworkMode, SandboxPolicyContext, SandboxPolicyInput,
+    SANDBOX_SCOPE_CONTAINER_ROOT,
 };
 pub use types::{
     CreateSandboxRequest, ExecuteRequest, ResolvedCreateSandboxRequest, SandboxInfo,
