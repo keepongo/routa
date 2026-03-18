@@ -301,6 +301,33 @@ enum TaskAction {
         #[arg(long)]
         summary: Option<String>,
     },
+    /// List artifacts attached to a task
+    ArtifactList {
+        /// Task ID
+        #[arg(long)]
+        task_id: String,
+        /// Optional artifact type filter
+        #[arg(long)]
+        artifact_type: Option<String>,
+    },
+    /// Attach an artifact to a task
+    ArtifactProvide {
+        /// Task ID
+        #[arg(long)]
+        task_id: String,
+        /// Agent ID providing the artifact
+        #[arg(long)]
+        agent_id: String,
+        /// Artifact type: screenshot, test_results, code_diff, logs
+        #[arg(long = "type")]
+        artifact_type: String,
+        /// Artifact content
+        #[arg(long)]
+        content: String,
+        /// Optional context
+        #[arg(long)]
+        context: Option<String>,
+    },
 }
 
 #[derive(Subcommand)]
@@ -714,6 +741,30 @@ async fn main() {
                             &status,
                             &agent_id,
                             summary.as_deref(),
+                        )
+                        .await
+                    }
+                    TaskAction::ArtifactList {
+                        task_id,
+                        artifact_type,
+                    } => {
+                        commands::task::list_artifacts(&state, &task_id, artifact_type.as_deref())
+                            .await
+                    }
+                    TaskAction::ArtifactProvide {
+                        task_id,
+                        agent_id,
+                        artifact_type,
+                        content,
+                        context,
+                    } => {
+                        commands::task::provide_artifact(
+                            &state,
+                            &task_id,
+                            &agent_id,
+                            &artifact_type,
+                            &content,
+                            context.as_deref(),
                         )
                         .await
                     }

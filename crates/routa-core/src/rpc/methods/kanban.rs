@@ -332,6 +332,9 @@ pub async fn move_card(state: &AppState, params: MoveCardParams) -> Result<MoveC
         .as_deref()
         .and_then(|column_id| board.columns.iter().find(|column| column.id == column_id))
         .cloned();
+    if previous_column_id.as_deref() != Some(params.target_column_id.as_str()) {
+        ensure_required_artifacts_present(state, &task.id, &target_column).await?;
+    }
 
     task.column_id = Some(params.target_column_id.clone());
     task.position = match params.position {
@@ -372,6 +375,51 @@ pub async fn move_card(state: &AppState, params: MoveCardParams) -> Result<MoveC
     Ok(MoveCardResult {
         card: task_to_card(&task),
     })
+}
+
+async fn ensure_required_artifacts_present(
+    state: &AppState,
+    task_id: &str,
+    target_column: &KanbanColumn,
+) -> Result<(), RpcError> {
+    let Some(required_artifacts) = target_column
+        .automation
+        .as_ref()
+        .and_then(|automation| automation.required_artifacts.as_ref())
+    else {
+        return Ok(());
+    };
+    if required_artifacts.is_empty() {
+        return Ok(());
+    }
+
+    let mut missing_artifacts = Vec::new();
+    for artifact_name in required_artifacts {
+        let artifact_type = crate::models::artifact::ArtifactType::from_str(artifact_name)
+            .ok_or_else(|| {
+                RpcError::BadRequest(format!(
+                    "Invalid required artifact type configured on column {}: {}",
+                    target_column.id, artifact_name
+                ))
+            })?;
+        let artifacts = state
+            .artifact_store
+            .list_by_task_and_type(task_id, &artifact_type)
+            .await?;
+        if artifacts.is_empty() {
+            missing_artifacts.push(artifact_name.clone());
+        }
+    }
+
+    if missing_artifacts.is_empty() {
+        return Ok(());
+    }
+
+    Err(RpcError::BadRequest(format!(
+        "Cannot move card to \"{}\": missing required artifacts: {}. Please provide these artifacts before moving the card.",
+        target_column.name,
+        missing_artifacts.join(", ")
+    )))
 }
 
 fn maybe_apply_lane_automation_defaults(task: &mut Task, target_column: Option<&KanbanColumn>) {
@@ -1371,6 +1419,70 @@ mod tests {
             task.trigger_session_id.is_some() || task.last_sync_error.is_some(),
             "lane automation should either start a session or record why it could not"
         );
+    }
+
+    #[tokio::test]
+    async fn move_card_blocks_transition_when_required_artifacts_are_missing() {
+        let state = setup_state().await;
+        let boards = list_boards(
+            &state,
+            ListBoardsParams {
+                workspace_id: "default".to_string(),
+            },
+        )
+        .await
+        .expect("list boards should succeed");
+        let board_id = boards.boards[0].id.clone();
+
+        let mut board = state
+            .kanban_store
+            .get(&board_id)
+            .await
+            .expect("board load should succeed")
+            .expect("default board should exist");
+        let review = board
+            .columns
+            .iter_mut()
+            .find(|column| column.id == "review")
+            .expect("review column should exist");
+        review.automation = Some(crate::models::kanban::KanbanColumnAutomation {
+            enabled: true,
+            required_artifacts: Some(vec!["screenshot".to_string()]),
+            ..Default::default()
+        });
+        state
+            .kanban_store
+            .update(&board)
+            .await
+            .expect("board update should succeed");
+
+        let created = create_card(
+            &state,
+            CreateCardParams {
+                workspace_id: "default".to_string(),
+                board_id: Some(board_id),
+                column_id: Some("todo".to_string()),
+                title: "Need screenshot".to_string(),
+                description: None,
+                priority: None,
+                labels: None,
+            },
+        )
+        .await
+        .expect("create card should succeed");
+
+        let err = move_card(
+            &state,
+            MoveCardParams {
+                card_id: created.card.id,
+                target_column_id: "review".to_string(),
+                position: None,
+            },
+        )
+        .await
+        .expect_err("transition should be blocked");
+
+        assert!(matches!(err, RpcError::BadRequest(message) if message.contains("missing required artifacts: screenshot")));
     }
 
     #[tokio::test]

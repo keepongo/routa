@@ -87,3 +87,57 @@ pub async fn update_status(
     print_json(&response);
     Ok(())
 }
+
+pub async fn list_artifacts(
+    state: &AppState,
+    task_id: &str,
+    artifact_type: Option<&str>,
+) -> Result<(), String> {
+    let router = RpcRouter::new(state.clone());
+    let mut params = serde_json::json!({
+        "taskId": task_id
+    });
+    if let Some(artifact_type) = artifact_type {
+        params["type"] = serde_json::json!(artifact_type);
+    }
+    let response = router
+        .handle_value(serde_json::json!({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "tasks.listArtifacts",
+            "params": params
+        }))
+        .await;
+    print_json(&response);
+    Ok(())
+}
+
+pub async fn provide_artifact(
+    state: &AppState,
+    task_id: &str,
+    agent_id: &str,
+    artifact_type: &str,
+    content: &str,
+    context: Option<&str>,
+) -> Result<(), String> {
+    let router = RpcRouter::new(state.clone());
+    let mut params = serde_json::json!({
+        "taskId": task_id,
+        "agentId": agent_id,
+        "type": artifact_type,
+        "content": content
+    });
+    if let Some(context) = context {
+        params["context"] = serde_json::json!(context);
+    }
+    let response = router
+        .handle_value(serde_json::json!({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "tasks.provideArtifact",
+            "params": params
+        }))
+        .await;
+    print_json(&response);
+    Ok(())
+}

@@ -215,6 +215,22 @@ impl Database {
                     created_at              INTEGER NOT NULL,
                     updated_at              INTEGER NOT NULL
                 );
+                CREATE TABLE IF NOT EXISTS artifacts (
+                    id                      TEXT PRIMARY KEY,
+                    type                    TEXT NOT NULL,
+                    task_id                 TEXT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+                    workspace_id            TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+                    provided_by_agent_id    TEXT,
+                    requested_by_agent_id   TEXT,
+                    request_id              TEXT,
+                    content                 TEXT,
+                    context                 TEXT,
+                    status                  TEXT NOT NULL DEFAULT 'provided',
+                    expires_at              INTEGER,
+                    metadata                TEXT,
+                    created_at              INTEGER NOT NULL,
+                    updated_at              INTEGER NOT NULL
+                );
                 CREATE TABLE IF NOT EXISTS kanban_boards (
                     id              TEXT PRIMARY KEY,
                     workspace_id    TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
@@ -276,6 +292,8 @@ impl Database {
 
                 CREATE INDEX IF NOT EXISTS idx_agents_workspace ON agents(workspace_id);
                 CREATE INDEX IF NOT EXISTS idx_tasks_workspace ON tasks(workspace_id);
+                CREATE INDEX IF NOT EXISTS idx_artifacts_task ON artifacts(task_id);
+                CREATE INDEX IF NOT EXISTS idx_artifacts_workspace ON artifacts(workspace_id);
                 CREATE INDEX IF NOT EXISTS idx_kanban_boards_workspace ON kanban_boards(workspace_id);
                 CREATE UNIQUE INDEX IF NOT EXISTS uq_kanban_boards_default_workspace ON kanban_boards(workspace_id) WHERE is_default = 1;
                 CREATE INDEX IF NOT EXISTS idx_notes_workspace ON notes(workspace_id);
@@ -367,6 +385,26 @@ impl Database {
                 );
                 CREATE INDEX IF NOT EXISTS idx_kanban_boards_workspace ON kanban_boards(workspace_id);
                 CREATE UNIQUE INDEX IF NOT EXISTS uq_kanban_boards_default_workspace ON kanban_boards(workspace_id) WHERE is_default = 1;"
+            )?;
+            conn.execute_batch(
+                "CREATE TABLE IF NOT EXISTS artifacts (
+                    id TEXT PRIMARY KEY,
+                    type TEXT NOT NULL,
+                    task_id TEXT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+                    workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+                    provided_by_agent_id TEXT,
+                    requested_by_agent_id TEXT,
+                    request_id TEXT,
+                    content TEXT,
+                    context TEXT,
+                    status TEXT NOT NULL DEFAULT 'provided',
+                    expires_at INTEGER,
+                    metadata TEXT,
+                    created_at INTEGER NOT NULL,
+                    updated_at INTEGER NOT NULL
+                );
+                CREATE INDEX IF NOT EXISTS idx_artifacts_task ON artifacts(task_id);
+                CREATE INDEX IF NOT EXISTS idx_artifacts_workspace ON artifacts(workspace_id);"
             )?;
             Self::ignore_duplicate_column(conn.execute("ALTER TABLE kanban_boards ADD COLUMN columns TEXT NOT NULL DEFAULT '[]'", []))?;
             let _ = conn.execute("UPDATE kanban_boards SET columns = columns_json WHERE (columns IS NULL OR columns = '[]') AND columns_json IS NOT NULL", []);

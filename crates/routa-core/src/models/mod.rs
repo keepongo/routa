@@ -1,4 +1,5 @@
 pub mod agent;
+pub mod artifact;
 pub mod codebase;
 pub mod kanban;
 pub mod kanban_config;
@@ -10,6 +11,7 @@ pub mod workspace;
 pub mod worktree;
 
 pub use agent::*;
+pub use artifact::*;
 pub use codebase::*;
 pub use kanban::*;
 pub use message::*;
