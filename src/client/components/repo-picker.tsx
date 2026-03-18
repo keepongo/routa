@@ -551,8 +551,8 @@ function SelectedRepoPill({
   const showMutedPath = pathDisplay === "below-muted";
 
   return (
-    <div className={`min-w-0 ${showMutedPath ? "flex flex-col gap-0.5" : "flex items-center gap-1.5 flex-wrap"}`}>
-      <div className="flex min-w-0 items-center gap-1.5 flex-wrap">
+    <div className={`min-w-0 ${showMutedPath ? "flex flex-col gap-0.5" : "flex items-center gap-1.5 overflow-hidden"}`}>
+      <div className="flex min-w-0 items-center gap-1.5 overflow-hidden">
         <GitRepoIcon className="w-3.5 h-3.5 text-gray-400 shrink-0" />
 
         <button
@@ -565,11 +565,13 @@ function SelectedRepoPill({
           {value.name}
         </button>
 
-        <BranchSelector
-          repoPath={value.path}
-          currentBranch={value.branch}
-          onBranchChange={onBranchChange}
-        />
+        <div className="shrink-0">
+          <BranchSelector
+            repoPath={value.path}
+            currentBranch={value.branch}
+            onBranchChange={onBranchChange}
+          />
+        </div>
 
         {showInlinePath && (
           <span

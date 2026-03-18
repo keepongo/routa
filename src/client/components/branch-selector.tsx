@@ -174,10 +174,10 @@ export function BranchSelector({
           }
         }}
         disabled={disabled || switching}
-        className="flex items-center gap-1 px-1.5 py-0.5 text-[10px] font-mono rounded bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors disabled:opacity-50"
+        className="flex max-w-[220px] items-center gap-1 px-1.5 py-0.5 text-[10px] font-mono rounded bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors disabled:opacity-50"
       >
         <BranchIcon />
-        {switching ? "..." : currentBranch}
+        <span className="truncate">{switching ? "..." : currentBranch}</span>
         {/* Behind badge */}
         {status && status.behind > 0 && (
           <span className="ml-0.5 px-1 py-0 text-[8px] rounded bg-blue-200 dark:bg-blue-800 text-blue-700 dark:text-blue-300">

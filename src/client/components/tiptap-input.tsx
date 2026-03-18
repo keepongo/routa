@@ -865,16 +865,18 @@ export function TiptapInput({
         <EditorContent editor={editor} />
 
         {/* Bottom toolbar */}
-        <div className="mt-1.5 -mb-0.5 flex flex-wrap items-center gap-2">
+        <div className="mt-1.5 -mb-0.5 flex min-w-0 items-center gap-2 overflow-hidden">
           {/* Repo picker */}
-          <RepoPicker
-            value={repoSelection}
-            onChange={onRepoChange}
-            pathDisplay={repoPathDisplay}
-          />
+          <div className="min-w-0 flex-1">
+            <RepoPicker
+              value={repoSelection}
+              onChange={onRepoChange}
+              pathDisplay={repoPathDisplay}
+            />
+          </div>
 
           {/* Provider dropdown */}
-          <div ref={providerDropdownRef}>
+          <div ref={providerDropdownRef} className="shrink-0">
             <button
               ref={providerBtnRef}
               type="button"
