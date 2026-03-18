@@ -635,7 +635,9 @@ export class KanbanWorkflowOrchestrator {
     const sessionStore = getHttpSessionStore();
     const sessionRecord = sessionStore.getSession(params.sessionId);
     if (!sessionRecord) {
-      return;
+      console.warn(
+        `[WorkflowOrchestrator] ACP session ${params.sessionId} not found in local session store; attempting recovery prompt anyway.`,
+      );
     }
 
     try {
