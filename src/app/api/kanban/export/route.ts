@@ -105,11 +105,7 @@ export async function GET(request: NextRequest) {
     })),
   );
 
-  const yamlContent = yaml.dump(exportConfig, {
-    noRefs: true,
-    sortKeys: false,
-    lineWidth: 120,
-  });
+  const yamlContent = yaml.dump(exportConfig);
 
   return new NextResponse(yamlContent, {
     status: 200,

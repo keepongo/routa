@@ -1766,7 +1766,10 @@ function SettingsPanelContent({ onClose, providers, initialTab }: Omit<SettingsP
   );
   const [kanbanExportWorkspaceId, setKanbanExportWorkspaceId] = useState<string>(() => loadKanbanExportWorkspaceId());
   const [isExportingKanbanYaml, setIsExportingKanbanYaml] = useState(false);
+  const [isImportingKanbanYaml, setIsImportingKanbanYaml] = useState(false);
   const [kanbanExportError, setKanbanExportError] = useState("");
+  const [kanbanImportResult, setKanbanImportResult] = useState("");
+  const kanbanImportInputRef = useRef<HTMLInputElement>(null);
   const datalistId = useId();
 
   useEffect(() => {
@@ -1833,6 +1836,32 @@ function SettingsPanelContent({ onClose, providers, initialTab }: Omit<SettingsP
       setIsExportingKanbanYaml(false);
     }
   };
+  const handleImportKanbanYaml = async (file: File) => {
+    const workspaceId = kanbanExportWorkspaceId.trim() || "default";
+    setKanbanExportError("");
+    setKanbanImportResult("");
+    setIsImportingKanbanYaml(true);
+    try {
+      const yamlContent = await file.text();
+      const response = await desktopAwareFetch("/api/kanban/import", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ yamlContent, workspaceId }),
+      });
+      const payload = await response.json().catch(() => null);
+      if (!response.ok) {
+        throw new Error(payload?.error || "Import failed");
+      }
+      setKanbanImportResult(`Imported ${payload?.importedBoards ?? 0} board(s) into workspace ${payload?.workspaceId ?? workspaceId}.`);
+    } catch (error) {
+      setKanbanExportError(error instanceof Error ? error.message : "Import failed");
+    } finally {
+      if (kanbanImportInputRef.current) {
+        kanbanImportInputRef.current.value = "";
+      }
+      setIsImportingKanbanYaml(false);
+    }
+  };
 
   const TAB_DEFS: { key: SettingsTab; label: string }[] = [
     { key: "agents", label: "Agents" },
@@ -1863,7 +1892,7 @@ function SettingsPanelContent({ onClose, providers, initialTab }: Omit<SettingsP
             <h2 className="text-sm font-semibold text-gray-900 dark:text-gray-100">Settings</h2>
           </div>
           <div className="flex items-center gap-2">
-            <div className="hidden items-center gap-2 rounded-lg border border-gray-200 bg-gray-50 px-2 py-1 dark:border-gray-700 dark:bg-[#111423] lg:flex">
+            <div className="flex flex-wrap items-center gap-2 rounded-lg border border-gray-200 bg-gray-50 px-2 py-1 dark:border-gray-700 dark:bg-[#111423]">
               <span className="text-[10px] font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">
                 Kanban YAML
               </span>
@@ -1881,6 +1910,26 @@ function SettingsPanelContent({ onClose, providers, initialTab }: Omit<SettingsP
                 className="rounded-md bg-blue-600 px-2 py-1 text-[11px] font-medium text-white transition-colors hover:bg-blue-700 disabled:opacity-50"
               >
                 {isExportingKanbanYaml ? "Exporting…" : "Export YAML"}
+              </button>
+              <input
+                ref={kanbanImportInputRef}
+                type="file"
+                accept=".yaml,.yml,text/yaml,application/yaml"
+                className="hidden"
+                onChange={(event) => {
+                  const file = event.target.files?.[0];
+                  if (file) {
+                    void handleImportKanbanYaml(file);
+                  }
+                }}
+              />
+              <button
+                type="button"
+                onClick={() => kanbanImportInputRef.current?.click()}
+                disabled={isImportingKanbanYaml}
+                className="rounded-md border border-gray-300 px-2 py-1 text-[11px] font-medium text-gray-700 transition-colors hover:bg-gray-100 disabled:opacity-50 dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-800"
+              >
+                {isImportingKanbanYaml ? "Importing…" : "Import YAML"}
               </button>
             </div>
             <div className="flex items-center gap-1 rounded-lg border border-gray-200 bg-gray-50 p-1 dark:border-gray-700 dark:bg-[#111423]">
@@ -1940,6 +1989,11 @@ function SettingsPanelContent({ onClose, providers, initialTab }: Omit<SettingsP
         {kanbanExportError && (
           <div className="border-b border-red-200 bg-red-50 px-4 py-2 text-[11px] text-red-700 dark:border-red-900/40 dark:bg-red-950/40 dark:text-red-300">
             Kanban YAML export failed: {kanbanExportError}
+          </div>
+        )}
+        {kanbanImportResult && (
+          <div className="border-b border-emerald-200 bg-emerald-50 px-4 py-2 text-[11px] text-emerald-700 dark:border-emerald-900/40 dark:bg-emerald-950/40 dark:text-emerald-300">
+            {kanbanImportResult}
           </div>
         )}
 

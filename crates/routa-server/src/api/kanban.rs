@@ -5,8 +5,11 @@ use axum::{
     Json, Router,
 };
 use routa_core::events::{AgentEvent, AgentEventType, EventBus};
+use routa_core::models::kanban::KanbanColumn;
+use routa_core::models::kanban_config::KanbanConfig;
+use routa_core::models::workspace::Workspace;
 use serde::Deserialize;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::convert::Infallible;
 use tokio::sync::mpsc;
 
@@ -18,6 +21,7 @@ pub fn router() -> Router<AppState> {
     Router::new()
         .route("/boards", get(list_boards).post(create_board))
         .route("/boards/{boardId}", get(get_board).patch(update_board))
+        .route("/import", post(import_config))
         .route("/events", get(kanban_events))
         .route("/decompose", post(decompose_tasks))
 }
@@ -317,6 +321,13 @@ struct DecomposeRequest {
     column_id: Option<String>,
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ImportConfigRequest {
+    yaml_content: String,
+    workspace_id: Option<String>,
+}
+
 async fn decompose_tasks(
     State(state): State<AppState>,
     Json(body): Json<DecomposeRequest>,
@@ -333,6 +344,112 @@ async fn decompose_tasks(
     )
     .await?;
     Ok(Json(rpc_result))
+}
+
+async fn import_config(
+    State(state): State<AppState>,
+    Json(body): Json<ImportConfigRequest>,
+) -> Result<Json<serde_json::Value>, ServerError> {
+    if body.yaml_content.trim().is_empty() {
+        return Err(ServerError::BadRequest(
+            "yamlContent is required".to_string(),
+        ));
+    }
+
+    let mut config = KanbanConfig::from_yaml(&body.yaml_content)
+        .map_err(ServerError::BadRequest)?;
+    if let Some(workspace_id) = body.workspace_id.filter(|value| !value.trim().is_empty()) {
+        config.workspace_id = workspace_id;
+    }
+    if let Err(errors) = config.validate() {
+        return Err(ServerError::BadRequest(format!(
+            "Kanban config validation failed:\n- {}",
+            errors.join("\n- ")
+        )));
+    }
+
+    if state.workspace_store.get(&config.workspace_id).await?.is_none() {
+        let workspace = Workspace::new(
+            config.workspace_id.clone(),
+            config
+                .name
+                .clone()
+                .filter(|name| !name.trim().is_empty())
+                .unwrap_or_else(|| config.workspace_id.clone()),
+            None,
+        );
+        state.workspace_store.save(&workspace).await?;
+    }
+
+    let board_ids = existing_board_ids(&state, &config.workspace_id).await?;
+    let mut applied = Vec::new();
+
+    for board in &config.boards {
+        let columns: Vec<KanbanColumn> = board
+            .columns
+            .iter()
+            .enumerate()
+            .map(|(idx, col)| KanbanColumn {
+                id: col.id.clone(),
+                name: col.name.clone(),
+                color: col.color.clone(),
+                position: idx as i64,
+                stage: col.stage.clone(),
+                automation: col.automation.clone(),
+            })
+            .collect();
+
+        let action = if board_ids.contains(&board.id) {
+            rpc_result(
+                &state,
+                "kanban.updateBoard",
+                serde_json::json!({
+                    "boardId": board.id,
+                    "name": board.name,
+                    "isDefault": board.is_default,
+                    "columns": columns,
+                }),
+            )
+            .await?;
+            "updated"
+        } else {
+            rpc_result(
+                &state,
+                "kanban.createBoard",
+                serde_json::json!({
+                    "workspaceId": config.workspace_id,
+                    "id": board.id,
+                    "name": board.name,
+                    "isDefault": board.is_default,
+                    "columns": board.columns.iter().map(|col| col.name.clone()).collect::<Vec<_>>(),
+                }),
+            )
+            .await?;
+            rpc_result(
+                &state,
+                "kanban.updateBoard",
+                serde_json::json!({
+                    "boardId": board.id,
+                    "columns": columns,
+                }),
+            )
+            .await?;
+            "created"
+        };
+
+        applied.push(serde_json::json!({
+            "boardId": board.id,
+            "boardName": board.name,
+            "action": action,
+            "columns": board.columns.len(),
+        }));
+    }
+
+    Ok(Json(serde_json::json!({
+        "workspaceId": config.workspace_id,
+        "importedBoards": applied.len(),
+        "applied": applied,
+    })))
 }
 
 async fn persist_session_concurrency_limit(
@@ -388,6 +505,31 @@ async fn rpc_result(
         -32002 | -32602 => Err(ServerError::BadRequest(message)),
         _ => Err(ServerError::Internal(message)),
     }
+}
+
+async fn existing_board_ids(
+    state: &AppState,
+    workspace_id: &str,
+) -> Result<HashSet<String>, ServerError> {
+    let result = rpc_result(
+        state,
+        "kanban.listBoards",
+        serde_json::json!({ "workspaceId": workspace_id }),
+    )
+    .await?;
+    let board_ids = result
+        .get("boards")
+        .and_then(|value| value.as_array())
+        .into_iter()
+        .flatten()
+        .filter_map(|board| {
+            board
+                .get("id")
+                .and_then(|value| value.as_str())
+                .map(ToString::to_string)
+        })
+        .collect();
+    Ok(board_ids)
 }
 
 fn strip_board_cards(board: &serde_json::Value) -> serde_json::Value {
