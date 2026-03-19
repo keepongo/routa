@@ -8,9 +8,9 @@ The project is maintained on the `main` branch. Security fixes are expected to l
 
 Do not open a public GitHub issue for an unpatched security vulnerability.
 
-Report security issues by emailing:
+Prefer GitHub's private vulnerability reporting for this repository when it is available.
 
-- `phodal@gmail.com`
+If private reporting is not available, contact the maintainer privately before public disclosure.
 
 Include:
 
