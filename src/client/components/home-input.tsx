@@ -29,6 +29,7 @@ interface SpecialistSummary {
   description?: string;
   role?: string;
   defaultProvider?: string;
+  model?: string;
 }
 
 interface HomeInputProps {
@@ -185,16 +186,16 @@ export function HomeInput({
       try {
         const idempotencyKey = `home-${Date.now()}-${Math.random().toString(36).slice(2)}`;
         const wsId = selectedWorkspaceId ?? undefined;
-        const effectiveProvider = context.provider ?? acp.selectedProvider;
+        const selectedSpec = selectedSpecialistId ? specialists.find((s) => s.id === selectedSpecialistId) : undefined;
+        const effectiveProvider = context.provider ?? selectedSpec?.defaultProvider ?? acp.selectedProvider;
         const conn = loadProviderConnectionConfig(effectiveProvider);
-        const modelAliasOrName = context.model ?? conn.model;
+        const modelAliasOrName = context.model ?? selectedSpec?.model ?? conn.model;
         const def = modelAliasOrName ? getModelDefinitionByAlias(modelAliasOrName) : undefined;
         // When a custom specialist is selected, use the specialist's role
-        const selectedSpec = selectedSpecialistId ? specialists.find((s) => s.id === selectedSpecialistId) : undefined;
         const effectiveRole = (selectedSpec?.role as typeof selectedRole) ?? selectedRole;
         const result = await acp.createSession(
           context.cwd ?? repoSelection?.path,
-          context.provider,
+          effectiveProvider,
           context.mode,
           effectiveRole,
           wsId,

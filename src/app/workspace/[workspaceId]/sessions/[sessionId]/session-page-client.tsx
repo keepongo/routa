@@ -40,6 +40,7 @@ interface SpecialistOption {
   id: string;
   name: string;
   role: AgentRole;
+  defaultProvider?: string;
   model?: string;
 }
 
@@ -257,6 +258,7 @@ export function SessionPageClient() {
               id: s.id,
               name: s.name,
               role: s.role as AgentRole,
+              defaultProvider: s.defaultProvider,
               model: s.model,
             }));
           setSpecialists(items);
@@ -918,12 +920,21 @@ export function SessionPageClient() {
     }
   }, [isSessionEmpty]);
 
-  /** Resolve effective provider + model + connection config: explicit > per-role default > global selection */
-  const resolveAgentConfig = useCallback((role: AgentRole = selectedAgent, explicitProvider?: string) => {
+  /** Resolve effective provider + model + connection config: explicit > specialist defaults > per-role default > global selection */
+  const resolveAgentConfig = useCallback((
+    role: AgentRole = selectedAgent,
+    explicitProvider?: string,
+    explicitModel?: string,
+    specialist?: SpecialistOption | null,
+  ) => {
     const defaults = loadDefaultProviders();
     const roleConfig = defaults[role];
-    const effectiveProvider = explicitProvider || roleConfig?.provider || acp.selectedProvider;
-    const modelAliasOrName = roleConfig?.model;
+    const effectiveProvider = explicitProvider
+      || specialist?.defaultProvider
+      || roleConfig?.provider
+      || acp.selectedProvider;
+    const modelAliasOrName = explicitModel
+      ?? (explicitProvider ? roleConfig?.model : (specialist?.model ?? roleConfig?.model));
     const def = modelAliasOrName ? getModelDefinitionByAlias(modelAliasOrName) : undefined;
     const conn = loadProviderConnectionConfig(effectiveProvider);
     return {
@@ -1012,16 +1023,23 @@ export function SessionPageClient() {
 
       const cwd = repoSelection?.path ?? undefined;
       const branch = repoSelection?.branch || undefined;
-      // Always pass the selected role - don't skip CRAFTER
-      const role = selectedAgent;
-      const { provider: effectiveProvider, model: resolvedModel, baseUrl, apiKey } = resolveAgentConfig(role, provider);
+      const selectedSpec = selectedSpecialistId
+        ? specialists.find((specialist) => specialist.id === selectedSpecialistId)
+        : null;
+      const role = selectedSpec?.role ?? selectedAgent;
+      const {
+        provider: effectiveProvider,
+        model: resolvedModel,
+        baseUrl,
+        apiKey,
+      } = resolveAgentConfig(role, provider, undefined, selectedSpec);
       console.log(`[handleCreateSession] Creating session: provider=${effectiveProvider}, model=${resolvedModel}, role=${role}, specialistId=${selectedSpecialistId}`);
       const result = await acp.createSession(cwd, effectiveProvider, undefined, role, workspaceId, resolvedModel, undefined, selectedSpecialistId ?? undefined, baseUrl, apiKey, branch);
       if (result?.sessionId) {
         router.push(`/workspace/${workspaceId}/sessions/${result.sessionId}`);
       }
     },
-    [acp, ensureConnected, repoSelection, selectedAgent, selectedSpecialistId, sessionId, deleteEmptySession, workspaceId, router, resolveAgentConfig]
+    [acp, ensureConnected, repoSelection, selectedAgent, selectedSpecialistId, sessionId, deleteEmptySession, workspaceId, router, resolveAgentConfig, specialists]
   );
 
   const handleSelectSession = useCallback(
@@ -1046,10 +1064,16 @@ export function SessionPageClient() {
     if (sessionId) return sessionId;
 
     // Fallback: create a new session
-    const role = selectedAgent;
-    const { provider: effectiveProvider, model: resolvedModel, baseUrl, apiKey } = resolveAgentConfig(role, provider);
-    // Explicit model (from chat input) takes priority over per-role model config
-    const effectiveModel = model ?? resolvedModel;
+    const selectedSpec = selectedSpecialistId
+      ? specialists.find((specialist) => specialist.id === selectedSpecialistId)
+      : null;
+    const role = selectedSpec?.role ?? selectedAgent;
+    const {
+      provider: effectiveProvider,
+      model: effectiveModel,
+      baseUrl,
+      apiKey,
+    } = resolveAgentConfig(role, provider, model, selectedSpec);
     const branch = repoSelection?.branch || undefined;
     console.log(`[ensureSessionForChat] Creating session: provider=${effectiveProvider}, role=${role}, model=${effectiveModel}, specialistId=${selectedSpecialistId}`);
     const result = await acp.createSession(cwd, effectiveProvider, modeId, role, workspaceId, effectiveModel, undefined, selectedSpecialistId ?? undefined, baseUrl, apiKey, branch);
@@ -1058,7 +1082,7 @@ export function SessionPageClient() {
       return result.sessionId;
     }
     return null;
-  }, [acp, sessionId, ensureConnected, selectedAgent, selectedSpecialistId, workspaceId, router, resolveAgentConfig, repoSelection?.branch]);
+  }, [acp, sessionId, ensureConnected, selectedAgent, selectedSpecialistId, workspaceId, router, resolveAgentConfig, repoSelection?.branch, specialists]);
 
   const handleAgentChange = useCallback((value: string) => {
     // Check if selecting a custom specialist (prefixed with "specialist:")

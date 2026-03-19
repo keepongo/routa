@@ -35,7 +35,11 @@ import type { AgentInstanceConfig } from "@/core/acp/agent-instance-factory";
 import { initRoutaOrchestrator, getRoutaOrchestrator } from "@/core/orchestration/orchestrator-singleton";
 import { getRoutaSystem } from "@/core/routa-system";
 import { AgentRole } from "@/core/models/agent";
-import { buildCoordinatorPrompt, getSpecialistById } from "@/core/orchestration/specialist-prompts";
+import {
+  buildCoordinatorPrompt,
+  getSpecialistById,
+  type SpecialistConfig,
+} from "@/core/orchestration/specialist-prompts";
 import { getDatabase, isPostgres } from "@/core/db";
 import { PostgresSpecialistStore } from "@/core/store/specialist-store";
 import { AcpError } from "@/core/acp/acp-process";
@@ -79,6 +83,27 @@ function persistSessionHistorySnapshot(
   const buffer = getSessionWriteBuffer();
   buffer.replace(sessionId, store.getConsolidatedHistory(sessionId));
   return buffer.flush(sessionId);
+}
+
+async function loadSpecialistConfig(
+  specialistId: string | undefined,
+  locale: string,
+): Promise<SpecialistConfig | null> {
+  if (!specialistId) return null;
+  const normalizedId = specialistId.toLowerCase();
+
+  if (isPostgres()) {
+    try {
+      const db = getDatabase();
+      const specStore = new PostgresSpecialistStore(db);
+      const specialist = await specStore.get(normalizedId);
+      if (specialist) return specialist;
+    } catch (err) {
+      console.warn("[ACP Route] DB specialist lookup failed, falling back to file cache:", err);
+    }
+  }
+
+  return getSpecialistById(normalizedId, locale) ?? null;
 }
 
 function markSessionPromptError(
@@ -259,17 +284,18 @@ export async function POST(request: NextRequest) {
       const branch = (p.branch as string | undefined) || undefined;
       const name = (p.name as string | undefined)?.trim() || undefined;
       const worktreeId = (p.worktreeId as string | undefined) || undefined;
+      const specialistId = (p.specialistId as string | undefined);
+      const specialistLocale = (p.specialistLocale as string | undefined) ?? "en";
+      const specialist = await loadSpecialistConfig(specialistId, specialistLocale);
 
       // Determine default provider based on environment
       const defaultProvider = isServerlessEnvironment() ? "claude-code-sdk" : "opencode";
-      const provider = (p.provider as string | undefined) ?? defaultProvider;
+      const provider = (p.provider as string | undefined) ?? specialist?.defaultProvider ?? defaultProvider;
 
       const modeId = (p.modeId as string | undefined) ?? (p.mode as string | undefined);
-      const role = (p.role as string | undefined)?.toUpperCase();
+      const role = (p.role as string | undefined)?.toUpperCase() ?? specialist?.role;
       const parentSessionId = (p.parentSessionId as string | undefined) || undefined;
-      const model = (p.model as string | undefined);
-      const specialistId = (p.specialistId as string | undefined);
-      const specialistLocale = (p.specialistLocale as string | undefined) ?? "en";
+      const model = (p.model as string | undefined) ?? specialist?.model;
       let sandboxId = (p.sandboxId as string | undefined)?.trim() || undefined;
       const toolMode = p.toolMode === "full"
         ? "full"
@@ -665,27 +691,12 @@ export async function POST(request: NextRequest) {
 
           // ── Load specialist system prompt ──────────────────────────────
           let specialistSystemPrompt: string | undefined;
-          if (specialistId) {
-            let specialist: { systemPrompt?: string; roleReminder?: string } | null | undefined;
-            if (isPostgres()) {
-              try {
-                const db = getDatabase();
-                const specStore = new PostgresSpecialistStore(db);
-                specialist = await specStore.get(specialistId.toLowerCase());
-              } catch (err) {
-                console.warn(`[ACP Route] DB specialist lookup failed, trying cache:`, err);
-                specialist = getSpecialistById(specialistId.toLowerCase(), specialistLocale);
-              }
-            } else {
-              specialist = getSpecialistById(specialistId.toLowerCase(), specialistLocale);
+          if (specialist?.systemPrompt) {
+            let prompt = specialist.systemPrompt;
+            if (specialist.roleReminder) {
+              prompt += `\n\n---\n**Reminder:** ${specialist.roleReminder}`;
             }
-            if (specialist?.systemPrompt) {
-              let prompt = specialist.systemPrompt;
-              if (specialist.roleReminder) {
-                prompt += `\n\n---\n**Reminder:** ${specialist.roleReminder}`;
-              }
-              specialistSystemPrompt = prompt;
-            }
+            specialistSystemPrompt = prompt;
           }
 
           // ── Update session record with ACP details ─────────────────────
