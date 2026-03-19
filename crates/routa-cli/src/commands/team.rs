@@ -114,6 +114,20 @@ pub async fn run(
     match spawn_result {
         Ok((sid, _)) => {
             tracing::info!("Team lead session created: {}", sid);
+            if let Err(e) = state
+                .acp_session_store
+                .create(
+                    &session_id,
+                    &cwd,
+                    &workspace_id,
+                    Some(provider),
+                    Some(specialist.role.as_str()),
+                    None,
+                )
+                .await
+            {
+                eprintln!("Failed to persist team lead session {}: {}", session_id, e);
+            }
         }
         Err(e) => {
             return Err(format!("Failed to create ACP session: {}", e));
@@ -198,7 +212,15 @@ pub async fn run(
     // ── 11. Enter interactive REPL if requested ──────────────────────────
     if interactive && state.acp_manager.is_alive(&session_id).await {
         renderer.finish();
-        run_interactive_repl(state, &session_id, &router, &workspace_id, &team_members).await?;
+        run_interactive_repl(
+            state,
+            &session_id,
+            &router,
+            &workspace_id,
+            &team_members,
+            &mut rx,
+        )
+        .await?;
     }
 
     // ── 12. Print summary ────────────────────────────────────────────────
@@ -226,6 +248,7 @@ async fn run_interactive_repl(
     router: &RpcRouter,
     workspace_id: &str,
     team_members: &[SpecialistConfig],
+    session_rx: &mut tokio::sync::broadcast::Receiver<serde_json::Value>,
 ) -> Result<(), String> {
     println!();
     println!("Team interactive mode. Commands:");
@@ -266,6 +289,7 @@ async fn run_interactive_repl(
                 println!("│ Specialist ID          │ Role       │ Description                          │");
                 println!("├────────────────────────┼────────────┼──────────────────────────────────────┤");
                 for member in team_members {
+                    let member_id = member.id.chars().take(22).collect::<String>();
                     let desc = member
                         .description
                         .as_deref()
@@ -275,7 +299,7 @@ async fn run_interactive_repl(
                         .collect::<String>();
                     println!(
                         "│ {:<22} │ {:<10} │ {:<36} │",
-                        &member.id[..member.id.len().min(22)],
+                        member_id,
                         member.role.as_str(),
                         desc
                     );
@@ -288,9 +312,7 @@ async fn run_interactive_repl(
                 match state.acp_manager.prompt(session_id, trimmed).await {
                     Ok(_) => {
                         // Stream response
-                        if let Some(mut rx) = state.acp_manager.subscribe(session_id).await {
-                            stream_until_idle(&mut rx, state, session_id).await;
-                        }
+                        stream_until_idle(session_rx, state, session_id).await;
                     }
                     Err(e) => {
                         println!("Failed to send message: {}", e);
