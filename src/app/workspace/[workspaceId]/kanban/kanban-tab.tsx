@@ -159,6 +159,62 @@ function formatLaneAutomationSummary(
   return `-> ${core}`;
 }
 
+function applySpecialistLanguageToAutomation(
+  automation: ColumnAutomationConfig | undefined,
+  specialistLanguage: KanbanSpecialistLanguage,
+): { automation: ColumnAutomationConfig | undefined; changed: boolean } {
+  if (!automation?.enabled) {
+    return { automation, changed: false };
+  }
+
+  const steps = getKanbanAutomationSteps(automation);
+  let changed = false;
+  const localizedSteps = steps.map((step) => {
+    const nextLocale = step.specialistId ? specialistLanguage : undefined;
+    if (step.specialistLocale === nextLocale) {
+      return step;
+    }
+    changed = true;
+    return {
+      ...step,
+      specialistLocale: nextLocale,
+    };
+  });
+
+  if (!changed) {
+    return { automation, changed: false };
+  }
+
+  return {
+    automation: normalizeKanbanAutomation({
+      ...automation,
+      steps: localizedSteps,
+      specialistLocale: localizedSteps[0]?.specialistLocale,
+    }),
+    changed: true,
+  };
+}
+
+function applySpecialistLanguageToBoardColumns(
+  columns: KanbanBoardInfo["columns"],
+  specialistLanguage: KanbanSpecialistLanguage,
+): { columns: KanbanBoardInfo["columns"]; changed: boolean } {
+  let changed = false;
+  const localizedColumns = columns.map((column) => {
+    const localized = applySpecialistLanguageToAutomation(column.automation, specialistLanguage);
+    if (!localized.changed) {
+      return column;
+    }
+    changed = true;
+    return {
+      ...column,
+      automation: localized.automation,
+    };
+  });
+
+  return { columns: localizedColumns, changed };
+}
+
 export function KanbanTab({
   workspaceId,
   refreshSignal,
@@ -193,6 +249,7 @@ export function KanbanTab({
   const [selectedBoardId, setSelectedBoardId] = useState<string | null>(defaultBoardId);
   const [localTasks, setLocalTasks] = useState<TaskInfo[]>(tasks);
   const autoPatchedTasksRef = useRef(new Set<string>());
+  const boardLanguageSyncInFlightRef = useRef(new Set<string>());
   const [dragTaskId, setDragTaskId] = useState<string | null>(null);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [draft, setDraft] = useState<DraftIssue>({
@@ -478,6 +535,49 @@ export function KanbanTab({
   const boardQueue = board?.queue;
   const queuedPositions = boardQueue?.queuedPositions ?? {};
 
+  const persistBoardSpecialistLanguage = useCallback(async (language: KanbanSpecialistLanguage) => {
+    if (!board) return;
+
+    const syncKey = `${board.id}:${language}`;
+    if (boardLanguageSyncInFlightRef.current.has(syncKey)) {
+      return;
+    }
+
+    const localizedBoard = applySpecialistLanguageToBoardColumns(board.columns, language);
+    if (!localizedBoard.changed) {
+      return;
+    }
+
+    boardLanguageSyncInFlightRef.current.add(syncKey);
+    try {
+      const response = await fetch(`/api/kanban/boards/${encodeURIComponent(board.id)}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ columns: localizedBoard.columns }),
+      });
+
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        throw new Error(data.error ?? "Failed to sync board specialist language");
+      }
+
+      onRefresh();
+    } catch (error) {
+      console.error("[KanbanTab] Failed to sync board specialist language:", error);
+    } finally {
+      boardLanguageSyncInFlightRef.current.delete(syncKey);
+    }
+  }, [board, onRefresh]);
+
+  useEffect(() => {
+    void persistBoardSpecialistLanguage(specialistLanguage);
+  }, [persistBoardSpecialistLanguage, specialistLanguage]);
+
+  const handleSpecialistLanguageChange = useCallback((language: KanbanSpecialistLanguage) => {
+    onSpecialistLanguageChange(language);
+    void persistBoardSpecialistLanguage(language);
+  }, [onSpecialistLanguageChange, persistBoardSpecialistLanguage]);
+
   const kanbanHeader = (
     <div
       className="shrink-0 border-b border-gray-200/70 px-4 py-1 dark:border-[#1c1f2e]"
@@ -582,7 +682,7 @@ export function KanbanTab({
                 <button
                   key={language}
                   type="button"
-                  onClick={() => onSpecialistLanguageChange(language)}
+                  onClick={() => handleSpecialistLanguageChange(language)}
                   data-testid={`kanban-specialist-language-${language}`}
                   aria-pressed={active}
                   className={`rounded px-2 py-0.5 text-[11px] font-medium transition-colors ${
