@@ -7,7 +7,7 @@ const blogMetadataContext = require.context(
 const blogArchiveContext = require.context(
   "@generated/docusaurus-plugin-content-blog/default/p",
   false,
-  /^\.\/routa-js-blog-archive-.*\.json$/,
+  /^\.\/.*blog-archive-.*\.json$/,
 );
 
 const fallbackMetadataByPermalink = new Map(
