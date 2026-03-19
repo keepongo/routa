@@ -962,6 +962,8 @@ describe("KanbanTab agent prompt flow", () => {
         ]}
         providers={[{ id: "claude", name: "Claude Code", description: "Claude Code provider", command: "claude" }]}
         specialists={[]}
+        specialistLanguage="en"
+        onSpecialistLanguageChange={vi.fn()}
         codebases={[]}
         onRefresh={vi.fn()}
         acp={acp}
@@ -987,5 +989,50 @@ describe("KanbanTab agent prompt flow", () => {
       }),
     );
 
+  });
+
+  it("localizes the KanbanTask Agent input and prompt in Chinese", async () => {
+    const onAgentPrompt = vi.fn(async () => null);
+    const acp = {
+      connected: true,
+      selectedProvider: "claude",
+      setProvider: vi.fn(),
+      selectSession: vi.fn(),
+    } as unknown as UseAcpState & UseAcpActions;
+
+    render(
+      <KanbanTab
+        workspaceId="workspace-1"
+        boards={[board]}
+        tasks={[createTask("task-1", "Story One")]}
+        sessions={[]}
+        providers={[{ id: "claude", name: "Claude Code", description: "Claude Code provider", command: "claude" }]}
+        specialists={[]}
+        specialistLanguage="zh-CN"
+        onSpecialistLanguageChange={vi.fn()}
+        codebases={[]}
+        onRefresh={vi.fn()}
+        acp={acp}
+        onAgentPrompt={onAgentPrompt}
+      />,
+    );
+
+    fireEvent.change(screen.getByPlaceholderText("描述要在 Kanban 中规划的工作..."), {
+      target: { value: "调查 lane 问题" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "发送" }));
+
+    await waitFor(() => {
+      expect(onAgentPrompt).toHaveBeenCalled();
+    });
+    expect(onAgentPrompt).toHaveBeenCalledWith(
+      expect.stringContaining("你是当前工作区的看板任务代理"),
+      expect.objectContaining({
+        provider: "claude",
+        role: "CRAFTER",
+        toolMode: "full",
+        allowedNativeTools: [],
+      }),
+    );
   });
 });

@@ -28,6 +28,21 @@ describe("buildKanbanTaskAgentPrompt", () => {
     expect(prompt).toContain("Do not invent alternate argument names such as \"column\"; prefer \"columnId\"");
     expect(prompt).toContain("User request: echo hello world");
   });
+
+  it("builds a Chinese planning prompt when the Kanban language is zh-CN", () => {
+    const prompt = buildKanbanTaskAgentPrompt({
+      workspaceId: "default",
+      boardId: "board-1",
+      repoPath: "/tmp/repo",
+      agentInput: "创建一个 hello world",
+      language: "zh-CN",
+    });
+
+    expect(prompt).toContain("你是当前工作区的看板任务代理");
+    expect(prompt).toContain("所有新建卡片的目标列：backlog");
+    expect(prompt).toContain("不要开始实现工作。");
+    expect(prompt).toContain("用户请求：创建一个 hello world");
+  });
 });
 
 describe("scheduleKanbanRefreshBurst", () => {

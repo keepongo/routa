@@ -9,7 +9,7 @@ import { KanbanCreateModal, EMPTY_DRAFT, type DraftIssue } from "../kanban-creat
 import { KanbanCard } from "./kanban-card";
 import { KanbanSettingsModal, type ColumnAutomationConfig } from "./kanban-settings-modal";
 import { KanbanCardActivityBar, KanbanCardDetail } from "./kanban-card-detail";
-import { buildKanbanTaskAgentPrompt, scheduleKanbanRefreshBurst } from "./kanban-agent-input";
+import { scheduleKanbanRefreshBurst } from "./kanban-agent-input";
 import { KanbanBgAgentPanel } from "./kanban-bg-agent-panel";
 import {
   findSpecialistById,
@@ -17,6 +17,10 @@ import {
   KANBAN_SPECIALIST_LANGUAGE_LABELS,
   type KanbanSpecialistLanguage,
 } from "./kanban-specialist-language";
+import {
+  buildKanbanTaskAgentPrompt,
+  getKanbanTaskAgentCopy,
+} from "./i18n/kanban-task-agent";
 import { getKanbanAutomationSteps, normalizeKanbanAutomation } from "@/core/models/kanban";
 import { ChatPanel } from "@/client/components/chat-panel";
 import { RepoPicker, type RepoSelection } from "@/client/components/repo-picker";
@@ -37,8 +41,8 @@ interface KanbanTabProps {
   sessions: SessionInfo[];
   providers: AcpProviderInfo[];
   specialists: SpecialistOption[];
-  specialistLanguage: KanbanSpecialistLanguage;
-  onSpecialistLanguageChange: (language: KanbanSpecialistLanguage) => void;
+  specialistLanguage?: KanbanSpecialistLanguage;
+  onSpecialistLanguageChange?: (language: KanbanSpecialistLanguage) => void;
   codebases: CodebaseData[];
   onRefresh: () => void;
   repoSync?: RepoSyncState;
@@ -223,8 +227,8 @@ export function KanbanTab({
   sessions,
   providers,
   specialists,
-  specialistLanguage,
-  onSpecialistLanguageChange,
+  specialistLanguage = "en",
+  onSpecialistLanguageChange = () => {},
   codebases,
   onRefresh,
   repoSync,
@@ -232,6 +236,7 @@ export function KanbanTab({
   onAgentPrompt,
 }: KanbanTabProps) {
   const languageLabels = KANBAN_SPECIALIST_LANGUAGE_LABELS[specialistLanguage];
+  const kanbanTaskAgentCopy = getKanbanTaskAgentCopy(specialistLanguage);
   const defaultBoardId = useMemo(
     () => boards.find((board) => board.isDefault)?.id ?? boards[0]?.id ?? null,
     [boards],
@@ -391,6 +396,7 @@ export function KanbanTab({
         boardId: selectedBoardId ?? defaultBoardId ?? "default",
         repoPath: defaultCodebase?.repoPath,
         agentInput,
+        language: specialistLanguage,
       });
 
       const sessionId = await onAgentPrompt(systemPrompt, {
@@ -417,6 +423,7 @@ export function KanbanTab({
     onRefresh,
     openAgentPanel,
     selectedBoardId,
+    specialistLanguage,
     workspaceId,
   ]);
 
@@ -1408,7 +1415,7 @@ export function KanbanTab({
                     onChange={(event) => acp?.setProvider(event.target.value)}
                     disabled={!acp?.connected || availableProviders.length === 0}
                   className="h-8 appearance-none rounded-l-2xl border-r border-gray-200 bg-transparent px-2.5 text-[12px] font-medium text-gray-700 outline-none transition-colors disabled:opacity-50 dark:border-gray-700 dark:text-gray-200"
-                    aria-label="KanbanTask Agent provider"
+                    aria-label={kanbanTaskAgentCopy.providerAriaLabel}
                     data-testid="kanban-agent-provider"
                   >
                     {availableProviders.map((provider) => (
@@ -1437,7 +1444,7 @@ export function KanbanTab({
                       void handleAgentSubmit();
                     }
                   }}
-                  placeholder={acp?.connected ? "Describe work to plan in Kanban..." : "Connecting..."}
+                  placeholder={acp?.connected ? kanbanTaskAgentCopy.placeholder : kanbanTaskAgentCopy.connectingPlaceholder}
                   disabled={agentLoading || !acp?.connected}
                       className="h-8 w-full bg-transparent px-3 pr-2 text-sm text-gray-800 placeholder-gray-400 outline-none disabled:opacity-50 dark:text-gray-200 dark:placeholder-gray-500"
                 />
@@ -1450,7 +1457,7 @@ export function KanbanTab({
                     "..."
                   ) : (
                     <>
-                      <span>Send</span>
+                      <span>{kanbanTaskAgentCopy.send}</span>
                       <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                         <path strokeLinecap="round" strokeLinejoin="round" d="M5 12h14m-6-6 6 6-6 6" />
                       </svg>
@@ -1461,16 +1468,16 @@ export function KanbanTab({
                   onClick={() => setShowCreateModal(true)}
                 className="inline-flex h-8 shrink-0 items-center rounded-lg bg-gradient-to-r from-amber-500 to-orange-500 px-3 py-0 text-[12px] font-semibold text-white shadow-sm transition-all hover:from-amber-600 hover:to-orange-500"
                 >
-                  Manual
+                  {kanbanTaskAgentCopy.manual}
                 </button>
               </div>
               {agentSessionId && (
                 <button
                   onClick={() => openAgentPanel(agentSessionId)}
                   className="shrink-0 text-xs text-amber-600 hover:underline dark:text-amber-400"
-                  title="Open the KanbanTask Agent panel"
+                  title={kanbanTaskAgentCopy.openPanelTitle}
                 >
-                  View
+                  {kanbanTaskAgentCopy.view}
                 </button>
               )}
             </div>
@@ -1479,7 +1486,7 @@ export function KanbanTab({
                 onClick={() => setShowCreateModal(true)}
                 className="inline-flex h-8 items-center rounded-lg bg-gradient-to-r from-amber-500 to-orange-500 px-3 text-[12px] font-medium text-white shadow-sm transition-all hover:from-amber-600 hover:to-orange-500"
               >
-              Manual
+              {kanbanTaskAgentCopy.manual}
             </button>
           )}
         </div>
@@ -1561,7 +1568,7 @@ export function KanbanTab({
           >
             <div className="flex items-center justify-between border-b border-gray-100 px-4 py-3 dark:border-[#191c28]">
               <div className="min-w-0">
-                <div className="text-sm font-semibold text-gray-900 dark:text-gray-100">KanbanTask Agent</div>
+                <div className="text-sm font-semibold text-gray-900 dark:text-gray-100">{kanbanTaskAgentCopy.panelTitle}</div>
                 <div className="truncate text-[11px] text-gray-400 dark:text-gray-500">
                   {agentSession?.provider ?? acp.selectedProvider} · {agentSessionId.slice(0, 12)}...
                 </div>
@@ -1573,13 +1580,13 @@ export function KanbanTab({
                   rel="noreferrer"
                   className="rounded-md border border-gray-200 px-2 py-1 text-xs text-gray-600 hover:bg-gray-50 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-[#191c28]"
                 >
-                  Open
+                  {kanbanTaskAgentCopy.open}
                 </a>
                 <button
                   onClick={() => setAgentPanelOpen(false)}
                   className="rounded-md border border-gray-200 px-2 py-1 text-xs text-gray-600 hover:bg-gray-50 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-[#191c28]"
                 >
-                  Close
+                  {kanbanTaskAgentCopy.close}
                 </button>
               </div>
             </div>
