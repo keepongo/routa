@@ -25,6 +25,7 @@ interface SpecialistSummary {
 type NormalizedTaskStatus = "not-started" | "in-progress" | "waiting-review" | "done" | "blocked";
 type TeamMemberStatus = "idle" | "working" | "blocked" | "reviewing";
 type CoordinationEventType = "plan" | "assign" | "revision" | "finding" | "complete" | "blocked";
+type RoleTone = "lead" | "qa" | "research" | "frontend" | "backend" | "review" | "ux" | "ops" | "general" | "neutral";
 
 interface TeamTaskNode {
   id: string;
@@ -39,13 +40,16 @@ interface TeamActivityItem {
   type: CoordinationEventType;
   title: string;
   actor: string;
+  actorRoleId?: string;
   target?: string;
+  targetRoleId?: string;
   timestamp: string;
   summary?: string;
   sessionId?: string;
   memberSession?: {
     sessionId: string;
     actor: string;
+    roleId?: string;
     badge: string;
     preview?: string;
     lastUpdatedLabel: string;
@@ -150,6 +154,67 @@ function activityTone(type: CoordinationEventType): string {
     case "blocked":
       return "bg-rose-100 text-rose-700 dark:bg-rose-500/10 dark:text-rose-300";
   }
+}
+
+function roleTone(roleId?: string): RoleTone {
+  if (!roleId) return "neutral";
+  if (roleId === TEAM_LEAD_SPECIALIST_ID) return "lead";
+  if (roleId.includes("qa")) return "qa";
+  if (roleId.includes("research")) return "research";
+  if (roleId.includes("frontend")) return "frontend";
+  if (roleId.includes("backend")) return "backend";
+  if (roleId.includes("review")) return "review";
+  if (roleId.includes("ux")) return "ux";
+  if (roleId.includes("operations")) return "ops";
+  if (roleId.includes("general")) return "general";
+  return "neutral";
+}
+
+function roleChipClass(roleId?: string, emphasis: "soft" | "strong" = "soft"): string {
+  const tone = roleTone(roleId);
+  const styles: Record<RoleTone, { soft: string; strong: string }> = {
+    lead: {
+      soft: "border-violet-200 bg-violet-50 text-violet-700 dark:border-violet-500/20 dark:bg-violet-500/10 dark:text-violet-300",
+      strong: "border-violet-300 bg-violet-100 text-violet-800 dark:border-violet-400/30 dark:bg-violet-500/15 dark:text-violet-200",
+    },
+    qa: {
+      soft: "border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-500/20 dark:bg-amber-500/10 dark:text-amber-300",
+      strong: "border-amber-300 bg-amber-100 text-amber-800 dark:border-amber-400/30 dark:bg-amber-500/15 dark:text-amber-200",
+    },
+    research: {
+      soft: "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-300",
+      strong: "border-emerald-300 bg-emerald-100 text-emerald-800 dark:border-emerald-400/30 dark:bg-emerald-500/15 dark:text-emerald-200",
+    },
+    frontend: {
+      soft: "border-cyan-200 bg-cyan-50 text-cyan-700 dark:border-cyan-500/20 dark:bg-cyan-500/10 dark:text-cyan-300",
+      strong: "border-cyan-300 bg-cyan-100 text-cyan-800 dark:border-cyan-400/30 dark:bg-cyan-500/15 dark:text-cyan-200",
+    },
+    backend: {
+      soft: "border-blue-200 bg-blue-50 text-blue-700 dark:border-blue-500/20 dark:bg-blue-500/10 dark:text-blue-300",
+      strong: "border-blue-300 bg-blue-100 text-blue-800 dark:border-blue-400/30 dark:bg-blue-500/15 dark:text-blue-200",
+    },
+    review: {
+      soft: "border-fuchsia-200 bg-fuchsia-50 text-fuchsia-700 dark:border-fuchsia-500/20 dark:bg-fuchsia-500/10 dark:text-fuchsia-300",
+      strong: "border-fuchsia-300 bg-fuchsia-100 text-fuchsia-800 dark:border-fuchsia-400/30 dark:bg-fuchsia-500/15 dark:text-fuchsia-200",
+    },
+    ux: {
+      soft: "border-pink-200 bg-pink-50 text-pink-700 dark:border-pink-500/20 dark:bg-pink-500/10 dark:text-pink-300",
+      strong: "border-pink-300 bg-pink-100 text-pink-800 dark:border-pink-400/30 dark:bg-pink-500/15 dark:text-pink-200",
+    },
+    ops: {
+      soft: "border-orange-200 bg-orange-50 text-orange-700 dark:border-orange-500/20 dark:bg-orange-500/10 dark:text-orange-300",
+      strong: "border-orange-300 bg-orange-100 text-orange-800 dark:border-orange-400/30 dark:bg-orange-500/15 dark:text-orange-200",
+    },
+    general: {
+      soft: "border-slate-200 bg-slate-50 text-slate-700 dark:border-slate-500/20 dark:bg-slate-500/10 dark:text-slate-300",
+      strong: "border-slate-300 bg-slate-100 text-slate-800 dark:border-slate-400/30 dark:bg-slate-500/15 dark:text-slate-200",
+    },
+    neutral: {
+      soft: "border-desktop-border bg-desktop-bg-primary text-desktop-text-secondary",
+      strong: "border-desktop-border bg-desktop-bg-active text-desktop-text-primary",
+    },
+  };
+  return styles[tone][emphasis];
 }
 
 function sessionBadge(session: SessionInfo): string {
@@ -683,7 +748,9 @@ export function TeamRunPageClient() {
         type: "plan",
         title: "Objective set",
         actor: "User",
+        actorRoleId: "user",
         target: leadName,
+        targetRoleId: TEAM_LEAD_SPECIALIST_ID,
         timestamp: formatRelativeTime(session.createdAt),
         summary: extractGoalFromPrompt(extractHistoryText(requestEntry.update)) ?? extractHistoryText(requestEntry.update),
         sessionId: session.sessionId,
@@ -700,6 +767,7 @@ export function TeamRunPageClient() {
         type: "plan",
         title: "Lead created plan",
         actor: leadName,
+        actorRoleId: TEAM_LEAD_SPECIALIST_ID,
         timestamp: formatRelativeTime(latestSpec.updatedAt),
         summary: extractGoalFromPrompt(latestSpec.content) ?? summarizeText(latestSpec.content),
         sessionId: latestSpec.sessionId ?? sessionId,
@@ -722,7 +790,9 @@ export function TeamRunPageClient() {
           type: update.status === "failed" ? "blocked" : "assign",
           title: update.status === "failed" ? `Dispatch failed for ${target}` : `Task assigned to ${target}`,
           actor: leadName,
+          actorRoleId: TEAM_LEAD_SPECIALIST_ID,
           target,
+          targetRoleId: targetRosterId,
           timestamp: formatRelativeTime(session.createdAt),
           summary: summarizeText(
             typeof update.rawInput?.additionalInstructions === "string"
@@ -733,6 +803,7 @@ export function TeamRunPageClient() {
           memberSession: linkedStream ? {
             sessionId: linkedStream.session.sessionId,
             actor: linkedStream.actor,
+            roleId: targetRosterId ?? resolveRosterSpecialistId(linkedStream.session),
             badge: linkedStream.badge,
             preview: linkedStream.preview,
             lastUpdatedLabel: linkedStream.lastUpdatedLabel,
@@ -744,6 +815,7 @@ export function TeamRunPageClient() {
 
     for (const child of descendantSessions) {
       const actor = getActorLabel(child, specialistsById);
+      const childRoleId = resolveRosterSpecialistId(child) ?? child.specialistId;
       const childCreatedAt = new Date(child.createdAt).getTime();
 
       items.push({
@@ -751,13 +823,16 @@ export function TeamRunPageClient() {
         type: "assign",
         title: `Opened session for ${actor}`,
         actor: leadName,
+        actorRoleId: TEAM_LEAD_SPECIALIST_ID,
         target: actor,
+        targetRoleId: childRoleId,
         timestamp: formatRelativeTime(child.createdAt),
         summary: summarizeText(child.name ?? child.specialistId ?? child.role ?? child.provider),
         sessionId: child.sessionId,
         memberSession: sessionStreamsBySessionId.get(child.sessionId) ? {
           sessionId: child.sessionId,
           actor,
+          roleId: childRoleId,
           badge: sessionBadge(child),
           preview: sessionStreamsBySessionId.get(child.sessionId)?.preview,
           lastUpdatedLabel: sessionStreamsBySessionId.get(child.sessionId)?.lastUpdatedLabel ?? formatRelativeTime(child.createdAt),
@@ -779,12 +854,14 @@ export function TeamRunPageClient() {
             type: completion.type,
             title: completion.title,
             actor,
+            actorRoleId: childRoleId,
             timestamp: formatRelativeTime(child.createdAt),
             summary: completion.summary,
             sessionId: child.sessionId,
             memberSession: sessionStreamsBySessionId.get(child.sessionId) ? {
               sessionId: child.sessionId,
               actor,
+              roleId: childRoleId,
               badge: sessionBadge(child),
               preview: sessionStreamsBySessionId.get(child.sessionId)?.preview,
               lastUpdatedLabel: sessionStreamsBySessionId.get(child.sessionId)?.lastUpdatedLabel ?? formatRelativeTime(child.createdAt),
@@ -800,12 +877,14 @@ export function TeamRunPageClient() {
             type: "blocked",
             title: `${actor} hit a runtime error`,
             actor,
+            actorRoleId: childRoleId,
             timestamp: formatRelativeTime(child.createdAt),
             summary: summarizeText(update.error),
             sessionId: child.sessionId,
             memberSession: sessionStreamsBySessionId.get(child.sessionId) ? {
               sessionId: child.sessionId,
               actor,
+              roleId: childRoleId,
               badge: sessionBadge(child),
               preview: sessionStreamsBySessionId.get(child.sessionId)?.preview,
               lastUpdatedLabel: sessionStreamsBySessionId.get(child.sessionId)?.lastUpdatedLabel ?? formatRelativeTime(child.createdAt),
@@ -1427,12 +1506,16 @@ function CoordinationFeedItem({
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="min-w-0">
               <div className="text-sm font-semibold text-desktop-text-primary">{item.title}</div>
-              <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-desktop-text-secondary">
-                <span>{item.actor}</span>
+              <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-desktop-text-secondary">
+                <span className={`rounded-full border px-2 py-0.5 font-medium ${roleChipClass(item.actorRoleId, "soft")}`}>
+                  {item.actor}
+                </span>
                 {item.target && (
                   <>
                     <span className="opacity-40">→</span>
-                    <span>{item.target}</span>
+                    <span className={`rounded-full border px-2 py-0.5 font-medium ${roleChipClass(item.targetRoleId, "soft")}`}>
+                      {item.target}
+                    </span>
                   </>
                 )}
               </div>
@@ -1456,25 +1539,32 @@ function CoordinationFeedItem({
             </div>
           )}
           {item.memberSession && (
-            <button
-              type="button"
-              onClick={onInspectSession}
-              className="mt-3 flex w-full items-start justify-between gap-3 rounded-xl border border-desktop-border bg-desktop-bg-primary px-3 py-3 text-left transition hover:bg-desktop-bg-active/70"
-            >
-              <div className="min-w-0">
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="text-xs font-semibold uppercase tracking-[0.16em] text-desktop-text-muted">Member session</span>
-                  <span className="rounded-full border border-desktop-border px-2 py-0.5 text-[10px] uppercase tracking-[0.16em] text-desktop-text-secondary">
-                    {item.memberSession.badge}
-                  </span>
-                </div>
-                <div className="mt-2 text-sm font-medium text-desktop-text-primary">{item.memberSession.actor}</div>
-                <div className="mt-1 line-clamp-2 text-xs leading-5 text-desktop-text-secondary">
-                  {item.memberSession.preview ?? item.memberSession.sessionId}
-                </div>
+            <div className="relative mt-4 pl-6">
+              <div className="absolute bottom-3 left-[11px] top-2 w-px bg-desktop-border" />
+              <div className="mb-2 flex items-center gap-2 text-[11px] uppercase tracking-[0.18em] text-desktop-text-muted">
+                <span className="rounded-full border border-desktop-border bg-desktop-bg-primary px-2 py-1">Member lane</span>
               </div>
-              <div className="shrink-0 text-[11px] text-desktop-text-muted">{item.memberSession.lastUpdatedLabel}</div>
-            </button>
+              <button
+                type="button"
+                onClick={onInspectSession}
+                className={`flex w-full items-start justify-between gap-3 rounded-xl border bg-desktop-bg-primary px-3 py-3 text-left transition hover:bg-desktop-bg-active/70 ${roleChipClass(item.memberSession.roleId, "soft")}`}
+              >
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className={`rounded-full border px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.16em] ${roleChipClass(item.memberSession.roleId, "strong")}`}>
+                      {item.memberSession.actor}
+                    </span>
+                    <span className="rounded-full border border-desktop-border px-2 py-0.5 text-[10px] uppercase tracking-[0.16em] text-desktop-text-secondary">
+                      {item.memberSession.badge}
+                    </span>
+                  </div>
+                  <div className="mt-2 line-clamp-2 text-xs leading-5 text-desktop-text-secondary">
+                    {item.memberSession.preview ?? item.memberSession.sessionId}
+                  </div>
+                </div>
+                <div className="shrink-0 text-[11px] text-desktop-text-muted">{item.memberSession.lastUpdatedLabel}</div>
+              </button>
+            </div>
           )}
         </div>
       </div>
