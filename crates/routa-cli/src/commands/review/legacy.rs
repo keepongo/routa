@@ -715,7 +715,7 @@ async fn wait_for_turn_complete_with_updates(
     verbose: bool,
 ) -> Result<String, String> {
     let mut renderer = if verbose {
-        Some(super::tui::TuiRenderer::new())
+        Some(crate::commands::tui::TuiRenderer::new())
     } else {
         None
     };
