@@ -180,3 +180,32 @@ moved between lanes, not only when it is created directly inside an automated la
 
 - It proves the Rust desktop Kanban transition path triggers automation when a card enters an automated lane after creation.
 - It closes the gap between "entry automation on create" and "entry automation on lane transition".
+
+## Follow-up Verification: Input to Dev Auto Chain
+
+This replay extends the previous checks to a longer Rust desktop path:
+
+- `Kanban input -> Backlog -> Todo -> Dev`
+
+### Replay Workspace
+
+- Workspace:
+  - `rust-auto-chain-import-1773967200`
+- Board:
+  - `imported-auto-chain-board`
+
+### Replay Notes
+
+- Import a board config first, then ensure the imported board contains six columns.
+- Configure both `todo` and `dev` with:
+  - `enabled = true`
+  - `providerId = "opencode"`
+  - `role = "CRAFTER"`
+  - `transitionType = "entry"`
+- Use the top Kanban input to create a backlog card, then move that same card across both automated lanes.
+
+### Expected Evidence
+
+- The card is visible in `Backlog` after input planning.
+- Moving it to `Todo` creates a fresh `OpenCode` session.
+- Moving it again to `Dev` also creates a fresh `OpenCode` session instead of being suppressed by the previous `triggerSessionId`.
