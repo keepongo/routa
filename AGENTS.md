@@ -40,6 +40,8 @@
 - Use **Playwright e2e** tests for automated coverage.
 - Test Tauri UI: `npm run tauri dev`, then use Playwright against `http://127.0.0.1:3210/`.
 - **Tauri routing debug**: If Tauri shows wrong page, check `crates/routa-server/src/lib.rs` fallback service maps routes to correct `__placeholder__` files; verify with `ls -la out/workspace/__placeholder__/`.
+- **Kanban + OpenCode desktop replay**: For Rust desktop automation validation, run `cargo run --manifest-path apps/desktop/src-tauri/Cargo.toml --example standalone_server`, open `http://127.0.0.1:3210/workspace/default/kanban`, select `OpenCode`, submit a unique KanbanTask Agent prompt, then verify Rust logs show `Creating session`, `wrote MCP config`, `tools/list`, and `tools/call`, and confirm the unique card appears in `Backlog`.
+- **Kanban cross-column automation replay**: To verify Rust lane transition automation instead of only create-time automation, create a card in `Backlog`, move it into a lane with `automation.enabled=true` such as `Todo`, then confirm the task gains `assignedProvider`, `assignedRole`, and `triggerSessionId`, the board UI shows the card in the new lane, and `GET /api/sessions?workspaceId=...` returns the matching `OpenCode` session.
 - For Rust test coverage work, follow this sequence: `AGENTS.md` -> `docs/fitness/README.md` -> `docs/fitness/unit-test.md`.
 - When changes span many files or touch shared core modules, run `routa-fitness graph impact`, `graph test-radius`, or `graph review-context` first to identify blast radius and prioritize regression coverage.
 - When changes span many files, do a full manual walkthrough in the browser:

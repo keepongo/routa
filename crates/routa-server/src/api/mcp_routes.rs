@@ -29,9 +29,21 @@ use routa_core::orchestration::{DelegateWithSpawnParams, OrchestratorConfig, Rou
 /// In-memory session store for MCP sessions.
 type McpSessions = Arc<RwLock<HashMap<String, McpSessionData>>>;
 
+#[derive(Clone)]
 struct McpSessionData {
-    #[allow(dead_code)]
     workspace_id: String,
+    tool_mode: Option<String>,
+    mcp_profile: Option<String>,
+}
+
+#[derive(Debug, Deserialize, Default, Clone)]
+#[serde(rename_all = "camelCase")]
+struct McpRequestQuery {
+    session_id: Option<String>,
+    #[serde(rename = "wsId")]
+    ws_id: Option<String>,
+    tool_mode: Option<String>,
+    mcp_profile: Option<String>,
 }
 
 pub fn router() -> Router<AppState> {
@@ -45,7 +57,7 @@ pub fn router() -> Router<AppState> {
         })
         .post({
             let sessions = sessions.clone();
-            move |headers, state, body| mcp_post(headers, state, body, sessions)
+            move |headers, state, query, body| mcp_post(headers, state, query, body, sessions)
         })
         .delete({
             let sessions = sessions.clone();
@@ -59,6 +71,7 @@ pub fn router() -> Router<AppState> {
 async fn mcp_post(
     headers: HeaderMap,
     State(state): State<AppState>,
+    Query(query): Query<McpRequestQuery>,
     Json(body): Json<serde_json::Value>,
     sessions: McpSessions,
 ) -> Result<(HeaderMap, Json<serde_json::Value>), ServerError> {
@@ -95,7 +108,9 @@ async fn mcp_post(
             sessions.write().await.insert(
                 new_session_id.clone(),
                 McpSessionData {
-                    workspace_id: "default".to_string(),
+                    workspace_id: query.ws_id.unwrap_or_else(|| "default".to_string()),
+                    tool_mode: query.tool_mode,
+                    mcp_profile: query.mcp_profile,
                 },
             );
 
@@ -128,7 +143,11 @@ async fn mcp_post(
         }
 
         "tools/list" => {
-            let tools = build_tool_list(&state);
+            let session_data = {
+                let store = sessions.read().await;
+                session_id.as_ref().and_then(|sid| store.get(sid).cloned())
+            };
+            let tools = build_tool_list(&state, session_data.as_ref());
             Ok((
                 response_headers,
                 Json(serde_json::json!({
@@ -141,12 +160,35 @@ async fn mcp_post(
 
         "tools/call" => {
             let tool_name = params.get("name").and_then(|v| v.as_str()).unwrap_or("");
-            let arguments = params
+            let mut arguments = params
                 .get("arguments")
                 .cloned()
                 .unwrap_or(serde_json::json!({}));
+            let normalized_tool_name = normalize_tool_name(tool_name).to_string();
+            let session_data = {
+                let store = sessions.read().await;
+                session_id.as_ref().and_then(|sid| store.get(sid).cloned())
+            };
 
-            let result = execute_tool_public(&state, tool_name, &arguments).await;
+            if let Some(session) = session_data.as_ref() {
+                if !tool_allowed_for_profile(&normalized_tool_name, session.mcp_profile.as_deref())
+                {
+                    return Ok((
+                        response_headers,
+                        Json(serde_json::json!({
+                            "jsonrpc": "2.0",
+                            "id": id,
+                            "error": {
+                                "code": -32602,
+                                "message": format!("Tool not allowed for MCP profile: {}", tool_name)
+                            }
+                        })),
+                    ));
+                }
+                inject_workspace_id(&mut arguments, &session.workspace_id);
+            }
+
+            let result = execute_tool_public(&state, &normalized_tool_name, &arguments).await;
 
             Ok((
                 response_headers,
@@ -188,8 +230,8 @@ async fn mcp_post(
 
 #[derive(Debug, Deserialize)]
 struct McpGetQuery {
-    #[allow(dead_code)]
-    session_id: Option<String>,
+    #[serde(flatten)]
+    common: McpRequestQuery,
 }
 
 async fn mcp_get(
@@ -277,8 +319,47 @@ pub fn normalize_tool_name_public(name: &str) -> &str {
     normalize_tool_name(name)
 }
 
-fn build_tool_list(_state: &AppState) -> Vec<serde_json::Value> {
-    build_tool_list_inner()
+fn build_tool_list(_state: &AppState, session: Option<&McpSessionData>) -> Vec<serde_json::Value> {
+    let tools = build_tool_list_inner();
+    match session.and_then(|item| item.mcp_profile.as_deref()) {
+        Some("kanban-planning") => tools
+            .into_iter()
+            .filter(|tool| {
+                tool.get("name")
+                    .and_then(|value| value.as_str())
+                    .is_some_and(|name| tool_allowed_for_profile(name, Some("kanban-planning")))
+            })
+            .collect(),
+        _ => tools,
+    }
+}
+
+fn inject_workspace_id(args: &mut serde_json::Value, workspace_id: &str) {
+    if !args.is_object() {
+        *args = serde_json::json!({ "workspaceId": workspace_id });
+        return;
+    }
+
+    if let Some(object) = args.as_object_mut() {
+        object
+            .entry("workspaceId".to_string())
+            .or_insert_with(|| serde_json::json!(workspace_id));
+    }
+}
+
+fn tool_allowed_for_profile(name: &str, profile: Option<&str>) -> bool {
+    match profile {
+        Some("kanban-planning") => matches!(
+            name,
+            "create_card"
+                | "decompose_tasks"
+                | "search_cards"
+                | "list_cards_by_column"
+                | "update_card"
+                | "move_card"
+        ),
+        _ => true,
+    }
 }
 
 fn build_tool_list_inner() -> Vec<serde_json::Value> {

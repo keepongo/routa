@@ -79,3 +79,104 @@ Result:
 - Desktop homepage loads with the unified home UI.
 - `Open Kanban` navigates to `/workspace/{id}/kanban`.
 - Kanban columns render successfully in desktop static mode.
+
+## Follow-up Verification: Kanban + OpenCode Automation Replay
+
+This replay was used to verify that the Rust desktop backend not only opens Kanban,
+but can also drive backlog planning through the KanbanTask Agent with OpenCode.
+
+### Preconditions
+
+- Run the desktop static server:
+  - `cargo run --manifest-path apps/desktop/src-tauri/Cargo.toml --example standalone_server`
+- Use the desktop static URL:
+  - `http://127.0.0.1:3210/workspace/default/kanban`
+- Keep `Auggie` out of scope during this replay. Use `OpenCode`.
+
+### Replay Steps
+
+1. Open `/workspace/default/kanban` from the desktop static server.
+2. Confirm the `KanbanTask Agent provider` selector is visible and `OpenCode` is selected.
+3. In the `Describe work to plan in Kanban...` input, send a unique prompt such as:
+   - `Create exactly one backlog card titled VERIFY-KANBAN-OPENCODE-20260320-B and stop after creation.`
+4. Wait for the KanbanTask Agent session panel to open and for the board to refresh.
+5. Confirm the new unique card appears in the `Backlog` column.
+6. Confirm the chat/trace panel reports a successful card creation message.
+
+### What to Inspect in Rust Logs
+
+- Session creation:
+  - `[ACP Route] Creating session: provider=Some("opencode")`
+- MCP injection:
+  - `[AcpManager] opencode: wrote MCP config to /Users/phodal/.config/opencode/opencode.json`
+- MCP handshake:
+  - `[MCP Route] POST: method=initialize`
+  - `[MCP Route] POST: method=tools/list`
+- Actual tool use:
+  - `[MCP Route] POST: method=tools/call`
+
+### Expected Evidence
+
+- `~/.config/opencode/opencode.json` contains a `routa-coordination` entry pointing at the Rust desktop server:
+  - `http://127.0.0.1:3210/api/mcp?...&toolMode=full&mcpProfile=kanban-planning`
+- The `Backlog` count increases.
+- The unique verification card is visible in the board, for example:
+  - `VERIFY-KANBAN-OPENCODE-20260320`
+  - `VERIFY-KANBAN-OPENCODE-20260320-B`
+- The KanbanTask Agent panel shows a creation summary such as:
+  - `Created backlog card ... in the backlog column.`
+
+### Why This Replay Matters
+
+- It verifies the missing Rust capability that was previously absent:
+  - `session/new` must preserve `toolMode=full` and `mcpProfile=kanban-planning`
+- It proves the desktop Rust backend is not only serving Kanban, but also enabling OpenCode to call the Kanban MCP tools needed for backlog decomposition and card creation.
+
+## Follow-up Verification: Cross-Column Lane Transition Automation
+
+This replay verified that Rust desktop Kanban automation also works when a card is
+moved between lanes, not only when it is created directly inside an automated lane.
+
+### Replay Workspace
+
+- Workspace:
+  - `rust-fix-enabled-1773965081`
+- Board:
+  - `shared-import-board`
+- Lane automation:
+  - `todo -> OpenCode / CRAFTER / entry`
+
+### Replay Steps
+
+1. Seed a backlog card:
+   - `BROWSER-MOVE-VERIFY-1773965081`
+2. Open:
+   - `http://127.0.0.1:3210/workspace/rust-fix-enabled-1773965081/kanban`
+3. Confirm the board initially shows:
+   - `Backlog 1 cards`
+   - `Todo 1 cards`
+4. Move the seeded card from `backlog` to `todo` through the Rust task update path:
+   - `PATCH /api/tasks/c569b0ee-5916-4d60-a41e-4ad05e9e7016`
+   - body:
+     - `{"columnId":"todo","boardId":"shared-import-board"}`
+5. Refresh the board UI and inspect task/session state.
+
+### Expected Evidence
+
+- The moved card now carries:
+  - `assignedProvider = "opencode"`
+  - `assignedRole = "CRAFTER"`
+  - `triggerSessionId = "b71a5908-063e-49b5-9118-d8f696913017"`
+- `GET /api/sessions?workspaceId=rust-fix-enabled-1773965081` returns a matching session:
+  - `provider = "opencode"`
+  - `role = "CRAFTER"`
+  - `sessionId = "b71a5908-063e-49b5-9118-d8f696913017"`
+- Browser output after refresh shows the lane transition:
+  - `Backlog 0 cards`
+  - `Todo 2 cards`
+  - `BROWSER-MOVE-VERIFY-1773965081`
+
+### Why This Replay Matters
+
+- It proves the Rust desktop Kanban transition path triggers automation when a card enters an automated lane after creation.
+- It closes the gap between "entry automation on create" and "entry automation on lane transition".
