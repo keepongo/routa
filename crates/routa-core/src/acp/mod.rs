@@ -284,8 +284,9 @@ impl AcpManager {
                 }
             }
 
+            let preset_command = resolve_preset_command(&preset);
             let process = AcpProcess::spawn(
-                &preset.command,
+                &preset_command,
                 &extra_args.iter().map(|s| s.as_str()).collect::<Vec<_>>(),
                 &cwd,
                 ntx.clone(),
@@ -402,13 +403,40 @@ impl AcpManager {
 
         managed.trace_writer.append_safe(&trace).await;
 
-        match &managed.process {
+        tracing::info!(
+            target: "routa_acp_prompt",
+            session_id = %session_id,
+            preset_id = %managed.preset_id,
+            acp_session_id = %managed.acp_session_id,
+            prompt_len = text.len(),
+            "acp prompt start"
+        );
+
+        let result = match &managed.process {
             AgentProcessType::Acp(p) => p.prompt(&managed.acp_session_id, text).await,
             AgentProcessType::Claude(p) => {
                 let stop_reason = p.prompt(text).await?;
                 Ok(serde_json::json!({ "stopReason": stop_reason }))
             }
+        };
+
+        match &result {
+            Ok(_) => tracing::info!(
+                target: "routa_acp_prompt",
+                session_id = %session_id,
+                preset_id = %managed.preset_id,
+                "acp prompt success"
+            ),
+            Err(error) => tracing::error!(
+                target: "routa_acp_prompt",
+                session_id = %session_id,
+                preset_id = %managed.preset_id,
+                error = %error,
+                "acp prompt failed"
+            ),
         }
+
+        result
     }
 
     /// Cancel the current prompt in a session.
@@ -535,6 +563,9 @@ pub struct AcpPreset {
     pub command: String,
     pub args: Vec<String>,
     pub description: String,
+    #[serde(default)]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub env_bin_override: Option<String>,
 }
 
 /// Get the list of known ACP agent presets (static/builtin only).
@@ -546,6 +577,7 @@ pub fn get_presets() -> Vec<AcpPreset> {
             command: "opencode".to_string(),
             args: vec!["acp".to_string()],
             description: "OpenCode AI coding agent".to_string(),
+            env_bin_override: Some("OPENCODE_BIN".to_string()),
         },
         AcpPreset {
             id: "gemini".to_string(),
@@ -553,6 +585,7 @@ pub fn get_presets() -> Vec<AcpPreset> {
             command: "gemini".to_string(),
             args: vec!["--experimental-acp".to_string()],
             description: "Google Gemini CLI".to_string(),
+            env_bin_override: None,
         },
         AcpPreset {
             id: "codex-acp".to_string(),
@@ -560,6 +593,7 @@ pub fn get_presets() -> Vec<AcpPreset> {
             command: "codex-acp".to_string(),
             args: vec![],
             description: "OpenAI Codex CLI (codex-acp wrapper)".to_string(),
+            env_bin_override: Some("CODEX_ACP_BIN".to_string()),
         },
         AcpPreset {
             id: "copilot".to_string(),
@@ -571,6 +605,7 @@ pub fn get_presets() -> Vec<AcpPreset> {
                 "--no-ask-user".to_string(),
             ],
             description: "GitHub Copilot CLI".to_string(),
+            env_bin_override: Some("COPILOT_BIN".to_string()),
         },
         AcpPreset {
             id: "auggie".to_string(),
@@ -578,6 +613,7 @@ pub fn get_presets() -> Vec<AcpPreset> {
             command: "auggie".to_string(),
             args: vec!["--acp".to_string()],
             description: "Augment Code's AI agent".to_string(),
+            env_bin_override: None,
         },
         AcpPreset {
             id: "kimi".to_string(),
@@ -585,6 +621,7 @@ pub fn get_presets() -> Vec<AcpPreset> {
             command: "kimi".to_string(),
             args: vec!["acp".to_string()],
             description: "Moonshot AI's Kimi CLI".to_string(),
+            env_bin_override: None,
         },
         AcpPreset {
             id: "kiro".to_string(),
@@ -592,6 +629,7 @@ pub fn get_presets() -> Vec<AcpPreset> {
             command: "kiro-cli".to_string(),
             args: vec!["acp".to_string()],
             description: "Amazon Kiro AI coding agent".to_string(),
+            env_bin_override: Some("KIRO_BIN".to_string()),
         },
         AcpPreset {
             id: "claude".to_string(),
@@ -601,6 +639,7 @@ pub fn get_presets() -> Vec<AcpPreset> {
             // Args are unused since we use ClaudeCodeProcess directly
             args: vec![],
             description: "Anthropic Claude Code (stream-json protocol)".to_string(),
+            env_bin_override: Some("CLAUDE_BIN".to_string()),
         },
     ]
 }
@@ -675,7 +714,21 @@ async fn get_registry_preset(id: &str) -> Result<AcpPreset, String> {
         command,
         args,
         description: agent.description,
+        env_bin_override: None,
     })
+}
+
+fn resolve_preset_command(preset: &AcpPreset) -> String {
+    if let Some(env_var) = &preset.env_bin_override {
+        if let Ok(custom_command) = std::env::var(env_var) {
+            let trimmed = custom_command.trim();
+            if !trimmed.is_empty() {
+                return trimmed.to_string();
+            }
+        }
+    }
+
+    crate::shell_env::which(&preset.command).unwrap_or_else(|| preset.command.clone())
 }
 
 // ─── Utility Functions ─────────────────────────────────────────────────────

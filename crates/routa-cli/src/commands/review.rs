@@ -360,34 +360,52 @@ pub async fn security(state: &AppState, options: ReviewAnalyzeOptions<'_>) -> Re
 struct SecurityAcpRuntimeEnv {
     home: Option<OsString>,
     xdg_config_home: Option<OsString>,
+    xdg_data_home: Option<OsString>,
+    xdg_cache_home: Option<OsString>,
+    enabled: bool,
 }
 
 impl SecurityAcpRuntimeEnv {
     fn install(repo_root: &Path) -> Result<Self, String> {
         let acp_home = repo_root.join(SECURITY_REVIEW_HOME_DIR).join("acp");
-        let acp_config_dir = acp_home.join(".config");
-        fs::create_dir_all(&acp_config_dir).map_err(|err| {
-            format!(
-                "Failed to prepare ACP runtime home {}: {}",
-                acp_config_dir.display(),
-                err
-            )
-        })?;
-
         let previous_home = std::env::var_os("HOME");
-        let previous_xdg = std::env::var_os("XDG_CONFIG_HOME");
-        std::env::set_var("HOME", &acp_home);
-        std::env::set_var("XDG_CONFIG_HOME", &acp_config_dir);
+        let previous_xdg_config_home = std::env::var_os("XDG_CONFIG_HOME");
+        let previous_xdg_data_home = std::env::var_os("XDG_DATA_HOME");
+        let previous_xdg_cache_home = std::env::var_os("XDG_CACHE_HOME");
+
+        if !needs_isolated_acp_runtime() {
+            return Ok(Self {
+                home: None,
+                xdg_config_home: None,
+                xdg_data_home: None,
+                xdg_cache_home: None,
+                enabled: false,
+            });
+        }
+
+        let acp_runtime_env = prepare_isolated_acp_runtime(&acp_home, previous_home.as_deref())?;
+
+        std::env::set_var("HOME", &acp_runtime_env.home_dir);
+        std::env::set_var("XDG_CONFIG_HOME", &acp_runtime_env.xdg_config_home);
+        std::env::set_var("XDG_DATA_HOME", &acp_runtime_env.xdg_data_home);
+        std::env::set_var("XDG_CACHE_HOME", &acp_runtime_env.xdg_cache_home);
 
         Ok(Self {
             home: previous_home,
-            xdg_config_home: previous_xdg,
+            xdg_config_home: previous_xdg_config_home,
+            xdg_data_home: previous_xdg_data_home,
+            xdg_cache_home: previous_xdg_cache_home,
+            enabled: true,
         })
     }
 }
 
 impl Drop for SecurityAcpRuntimeEnv {
     fn drop(&mut self) {
+        if !self.enabled {
+            return;
+        }
+
         if let Some(home) = &self.home {
             std::env::set_var("HOME", home);
         } else {
@@ -399,7 +417,143 @@ impl Drop for SecurityAcpRuntimeEnv {
         } else {
             std::env::remove_var("XDG_CONFIG_HOME");
         }
+
+        if let Some(xdg_data_home) = &self.xdg_data_home {
+            std::env::set_var("XDG_DATA_HOME", xdg_data_home);
+        } else {
+            std::env::remove_var("XDG_DATA_HOME");
+        }
+
+        if let Some(xdg_cache_home) = &self.xdg_cache_home {
+            std::env::set_var("XDG_CACHE_HOME", xdg_cache_home);
+        } else {
+            std::env::remove_var("XDG_CACHE_HOME");
+        }
     }
+}
+
+#[derive(Debug)]
+struct IsolatedAcpRuntimeHome {
+    home_dir: PathBuf,
+    xdg_config_home: PathBuf,
+    xdg_data_home: PathBuf,
+    xdg_cache_home: PathBuf,
+}
+
+fn needs_isolated_acp_runtime() -> bool {
+    let base_home = match std::env::var_os("HOME") {
+        Some(home) => PathBuf::from(home),
+        None => dirs::home_dir().unwrap_or_else(|| PathBuf::from(".")),
+    };
+    !is_writable_with_probe(&base_home.join(".config"))
+        || !is_writable_with_probe(&base_home.join(".local").join("share"))
+        || !is_writable_with_probe(&base_home.join(".cache"))
+}
+
+fn prepare_isolated_acp_runtime(
+    acp_home: &Path,
+    fallback_home: Option<&std::ffi::OsStr>,
+) -> Result<IsolatedAcpRuntimeHome, String> {
+    let xdg_config_home = acp_home.join(".config");
+    let xdg_data_home = acp_home.join(".local").join("share");
+    let xdg_cache_home = acp_home.join(".cache");
+
+    for dir in [&xdg_config_home, &xdg_data_home, &xdg_cache_home] {
+        fs::create_dir_all(dir).map_err(|err| {
+            format!(
+                "Failed to prepare isolated ACP runtime dir {}: {}",
+                dir.display(),
+                err
+            )
+        })?;
+    }
+
+    let _ = fallback_home;
+    if let Some(raw_home) = fallback_home {
+        let home_dir = Path::new(raw_home);
+        let source_entries = [
+            home_dir.join(".config").join("opencode"),
+            home_dir.join(".local").join("share").join("opencode"),
+            home_dir.join(".cache").join("opencode"),
+        ];
+        for source in source_entries {
+            if !source.exists() {
+                continue;
+            }
+            let rel = source
+                .strip_prefix(home_dir)
+                .map_err(|err| format!("Invalid source path {}: {}", source.display(), err))?;
+
+            let destination = acp_home.join(rel);
+            if source.is_file() {
+                copy_file_with_parent(&source, &destination)?;
+            } else if source.is_dir() {
+                copy_dir_recursive(&source, &destination)?;
+            }
+        }
+    }
+
+    Ok(IsolatedAcpRuntimeHome {
+        home_dir: acp_home.to_path_buf(),
+        xdg_config_home,
+        xdg_data_home,
+        xdg_cache_home,
+    })
+}
+
+fn is_writable_with_probe(path: &Path) -> bool {
+    if !fs::create_dir_all(path).is_ok() {
+        return false;
+    }
+    let marker = path.join(".routa-acp-write-check");
+    if fs::write(&marker, b"ok").is_err() {
+        return false;
+    }
+    let _ = fs::remove_file(&marker);
+    true
+}
+
+fn copy_file_with_parent(src: &Path, dst: &Path) -> Result<(), String> {
+    if let Some(parent) = dst.parent() {
+        fs::create_dir_all(parent)
+            .map_err(|err| format!("Failed to create parent dir {}: {}", parent.display(), err))?;
+    }
+    fs::copy(src, dst).map_err(|err| {
+        format!(
+            "Failed to copy {} -> {}: {}",
+            src.display(),
+            dst.display(),
+            err
+        )
+    })?;
+    Ok(())
+}
+
+fn copy_dir_recursive(src: &Path, dst: &Path) -> Result<(), String> {
+    fs::create_dir_all(dst).map_err(|err| {
+        format!(
+            "Failed to create destination dir {}: {}",
+            dst.display(),
+            err
+        )
+    })?;
+
+    for entry in src
+        .read_dir()
+        .map_err(|err| format!("Failed to read source dir {}: {}", src.display(), err))?
+    {
+        let entry = entry
+            .map_err(|err| format!("Failed to read source entry in {}: {}", src.display(), err))?;
+        let source_path = entry.path();
+        let destination_path = dst.join(entry.file_name());
+
+        if source_path.is_dir() {
+            copy_dir_recursive(&source_path, &destination_path)?;
+        } else if source_path.is_file() {
+            copy_file_with_parent(&source_path, &destination_path)?;
+        }
+    }
+    Ok(())
 }
 
 async fn call_review_worker(
@@ -858,6 +1012,20 @@ fn print_security_acp_runtime_diagnostics(provider: &str, cwd: &str, verbose: bo
             format!("{}/.config", env_home)
         }
     });
+    let data_home = std::env::var("XDG_DATA_HOME").unwrap_or_else(|_| {
+        if env_home == "<unset>" {
+            "<unset>".to_string()
+        } else {
+            format!("{}/.local/share", env_home)
+        }
+    });
+    let cache_home = std::env::var("XDG_CACHE_HOME").unwrap_or_else(|_| {
+        if env_home == "<unset>" {
+            "<unset>".to_string()
+        } else {
+            format!("{}/.cache", env_home)
+        }
+    });
 
     println!("┌──────────────── ACP Runtime Diagnostics ────────────────┐");
     println!("│ provider       = {:<34} │", truncate(provider, 34));
@@ -868,6 +1036,8 @@ fn print_security_acp_runtime_diagnostics(provider: &str, cwd: &str, verbose: bo
     );
     println!("│ HOME          = {:<34} │", truncate(&env_home, 34));
     println!("│ XDG_CONFIG    = {:<34} │", truncate(&cfg_home, 34));
+    println!("│ XDG_DATA_HOME = {:<34} │", truncate(&data_home, 34));
+    println!("│ XDG_CACHE_HOME= {:<34} │", truncate(&cache_home, 34));
     println!("│ CWD           = {:<34} │", truncate(cwd, 34));
     println!("│ PATH          = {:<34} │", truncate(&trimmed_path, 34));
     println!(
