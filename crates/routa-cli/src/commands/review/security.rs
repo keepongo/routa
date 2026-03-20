@@ -10,22 +10,16 @@ use routa_core::state::AppState;
 use routa_core::workflow::specialist::{SpecialistDef, SpecialistLoader};
 use serde_json::Value;
 
-use super::acp_runner::{wait_for_turn_complete_with_updates, wait_for_turn_complete_without_updates};
-use super::output::{
-    print_pretty_json, print_review_result, print_security_acp_runtime_diagnostics, truncate,
-};
+use super::acp_runner::{call_security_specialist_via_acp, resolve_security_provider};
+use super::output::{print_pretty_json, print_review_result, truncate};
 use super::shared::{
     build_review_input_payload, find_command_in_path, load_dotenv, load_specialist_by_id,
-    provider_runtime_binary, resolve_repo_root, ReviewAnalyzeOptions, SecurityCandidate,
+    resolve_repo_root, ReviewAnalyzeOptions, SecurityCandidate,
     SecurityCandidateBucket, SecurityCandidateWorkload, SecurityDispatchInput, SecurityEvidencePack,
     SecurityReviewPayload, SecurityRootFinding, SecuritySpecialistDispatch,
     SecuritySpecialistOutput, SecuritySpecialistReport, ToolTrace,
     SECURITY_DISPATCH_MAX_SPECIALISTS, SECURITY_DISPATCH_OUTPUT_PREVIEW_CHARS,
     SECURITY_REVIEW_HOME_DIR, SECURITY_REVIEW_VENV_DIR, SECURITY_SEMGREP_RULES_PATH,
-};
-use super::stream_parser::{
-    extract_agent_output_from_history, extract_agent_output_from_process_output,
-    extract_text_from_prompt_result,
 };
 
 pub async fn security(state: &AppState, options: ReviewAnalyzeOptions<'_>) -> Result<(), String> {
@@ -307,124 +301,6 @@ fn copy_dir_recursive(src: &Path, dst: &Path) -> Result<(), String> {
         }
     }
     Ok(())
-}
-
-async fn call_security_specialist_via_acp(
-    state: &AppState,
-    specialist: &SpecialistDef,
-    user_request: &str,
-    verbose: bool,
-    provider: &str,
-    cwd: &str,
-) -> Result<String, String> {
-    let session_id = uuid::Uuid::new_v4().to_string();
-    let workspace_id = "default".to_string();
-    let cwd = cwd.to_string();
-
-    if verbose {
-        println!("╔══════════════════════════════════════════════════════════╗");
-        println!("║  Security Specialist ACP Execution                    ║");
-        println!("╠══════════════════════════════════════════════════════════╣");
-        println!("║  Specialist: {:<40} ║", truncate(&specialist.id, 40));
-        println!("║  Provider  : {:<40} ║", truncate(&provider, 40));
-        println!("║  Role      : {:<40} ║", truncate(&specialist.role, 40));
-        println!("║  Workspace : {:<40} ║", truncate(&workspace_id, 40));
-        println!("║  CWD       : {:<40} ║", truncate(&cwd, 40));
-        println!("╚══════════════════════════════════════════════════════════╝");
-
-        let runtime_binary = provider_runtime_binary(provider);
-        let runtime_in_path = find_command_in_path(&runtime_binary);
-        print_security_acp_runtime_diagnostics(
-            provider,
-            &cwd,
-            &runtime_binary,
-            runtime_in_path.as_deref(),
-        );
-    }
-
-    state
-        .acp_manager
-        .create_session(
-            session_id.clone(),
-            cwd.clone(),
-            workspace_id.clone(),
-            Some(provider.to_string()),
-            Some(specialist.role.clone()),
-            specialist.default_model.clone(),
-            None,
-            None,
-            None,
-        )
-        .await
-        .map_err(|error| format!("Failed to create ACP session: {}", error))?;
-
-    let mut maybe_rx = state.acp_manager.subscribe(&session_id).await;
-    let prompt = build_security_final_prompt(specialist, user_request);
-
-    let prompt_response = state
-        .acp_manager
-        .prompt(&session_id, &prompt)
-        .await
-        .map_err(|error| format!("Failed to send prompt: {}", error))?;
-
-    let streamed_output = if let Some(mut rx) = maybe_rx.take() {
-        wait_for_turn_complete_with_updates(state, &session_id, &mut rx, verbose).await?
-    } else {
-        wait_for_turn_complete_without_updates(state, &session_id).await?;
-        String::new()
-    };
-
-    let history = state
-        .acp_manager
-        .get_session_history(&session_id)
-        .await
-        .unwrap_or_default();
-    let output = if streamed_output.trim().is_empty() {
-        extract_agent_output_from_history(&history)
-    } else {
-        streamed_output
-    };
-    let output = if output.trim().is_empty() {
-        extract_text_from_prompt_result(&prompt_response).unwrap_or_default()
-    } else {
-        output
-    };
-    let output = if output.trim().is_empty() {
-        extract_agent_output_from_process_output(&history)
-    } else {
-        output
-    };
-
-    state.acp_manager.kill_session(&session_id).await;
-
-    if output.trim().is_empty() {
-        let response_preview = truncate(&prompt_response.to_string(), 600);
-        return Err(format!(
-            "Security specialist completed without producing an output. prompt_response={}, history_entries={}",
-            response_preview,
-            history.len()
-        ));
-    }
-
-    Ok(output)
-}
-
-fn build_security_final_prompt(specialist: &SpecialistDef, user_request: &str) -> String {
-    let mut prompt = specialist.system_prompt.clone();
-    if let Some(reminder) = &specialist.role_reminder {
-        if !reminder.trim().is_empty() {
-            prompt.push_str(&format!("\n\n---\n**Reminder:** {}", reminder));
-        }
-    }
-    prompt.push_str(&format!("\n\n---\n\n## User Request\n\n{}", user_request));
-    prompt
-}
-
-fn resolve_security_provider(specialist: &SpecialistDef) -> String {
-    std::env::var("ROUTA_REVIEW_PROVIDER")
-        .ok()
-        .or_else(|| specialist.default_provider.clone())
-        .unwrap_or_else(|| "opencode".to_string())
 }
 
 fn build_security_specialist_prompt(payload: &SecurityReviewPayload) -> Result<String, String> {
