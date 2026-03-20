@@ -111,6 +111,10 @@ pub struct ClaudeCodeConfig {
     pub permission_mode: Option<String>,
     /// MCP config JSON strings
     pub mcp_configs: Vec<String>,
+    /// Optional specialist/system prompt appended to Claude's default prompt.
+    pub append_system_prompt: Option<String>,
+    /// Optional allowlist for Claude built-in tools. Empty disables all built-ins.
+    pub allowed_tools: Option<Vec<String>>,
 }
 
 impl Default for ClaudeCodeConfig {
@@ -121,6 +125,8 @@ impl Default for ClaudeCodeConfig {
             display_name: "Claude Code".to_string(),
             permission_mode: Some("bypassPermissions".to_string()),
             mcp_configs: Vec::new(),
+            append_system_prompt: None,
+            allowed_tools: None,
         }
     }
 }
@@ -209,6 +215,21 @@ impl ClaudeCodeProcess {
             cmd.arg("--dangerously-skip-permissions");
         } else {
             cmd.args(["--permission-mode", permission_mode]);
+        }
+
+        if let Some(prompt) = &self.config.append_system_prompt {
+            if !prompt.trim().is_empty() {
+                cmd.args(["--append-system-prompt", prompt]);
+            }
+        }
+
+        if let Some(allowed_tools) = &self.config.allowed_tools {
+            let tools_arg = if allowed_tools.is_empty() {
+                String::new()
+            } else {
+                allowed_tools.join(",")
+            };
+            cmd.args(["--tools", &tools_arg]);
         }
 
         // Disallow interactive questions

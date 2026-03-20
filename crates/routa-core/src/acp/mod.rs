@@ -69,6 +69,17 @@ pub struct AcpSessionRecord {
     /// Parent session ID for CRAFTER child sessions
     #[serde(skip_serializing_if = "Option::is_none")]
     pub parent_session_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub specialist_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub specialist_system_prompt: Option<String>,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct SessionLaunchOptions {
+    pub specialist_id: Option<String>,
+    pub specialist_system_prompt: Option<String>,
+    pub allowed_native_tools: Option<Vec<String>>,
 }
 
 // ─── Managed Process ────────────────────────────────────────────────────
@@ -232,6 +243,35 @@ impl AcpManager {
         tool_mode: Option<String>,
         mcp_profile: Option<String>,
     ) -> Result<(String, String), String> {
+        self.create_session_with_options(
+            session_id,
+            cwd,
+            workspace_id,
+            provider,
+            role,
+            model,
+            parent_session_id,
+            tool_mode,
+            mcp_profile,
+            SessionLaunchOptions::default(),
+        )
+        .await
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub async fn create_session_with_options(
+        &self,
+        session_id: String,
+        cwd: String,
+        workspace_id: String,
+        provider: Option<String>,
+        role: Option<String>,
+        model: Option<String>,
+        parent_session_id: Option<String>,
+        tool_mode: Option<String>,
+        mcp_profile: Option<String>,
+        options: SessionLaunchOptions,
+    ) -> Result<(String, String), String> {
         let provider_name = provider.as_deref().unwrap_or("opencode");
 
         // Create the notification broadcast channel for this session
@@ -246,6 +286,8 @@ impl AcpManager {
                 display_name: format!("Claude-{}", &session_id[..8.min(session_id.len())]),
                 permission_mode: Some("bypassPermissions".to_string()),
                 mcp_configs: Vec::new(),
+                append_system_prompt: options.specialist_system_prompt.clone(),
+                allowed_tools: options.allowed_native_tools.clone(),
             };
 
             let claude_process = ClaudeCodeProcess::spawn(config, ntx.clone()).await?;
@@ -320,6 +362,8 @@ impl AcpManager {
             model: model.clone(),
             created_at: chrono::Utc::now().to_rfc3339(),
             parent_session_id: parent_session_id.clone(),
+            specialist_id: options.specialist_id.clone(),
+            specialist_system_prompt: options.specialist_system_prompt.clone(),
         };
 
         self.sessions

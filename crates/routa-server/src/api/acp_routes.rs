@@ -14,6 +14,8 @@ use tokio_stream::StreamExt as _;
 use crate::acp;
 use crate::error::ServerError;
 use crate::state::AppState;
+use routa_core::acp::SessionLaunchOptions;
+use routa_core::orchestration::SpecialistConfig;
 use routa_core::storage::{LocalSessionProvider, SessionRecord};
 
 pub fn router() -> Router<AppState> {
@@ -213,10 +215,18 @@ async fn acp_rpc(
                 .get("provider")
                 .and_then(|v| v.as_str())
                 .map(|s| s.to_string());
+            let specialist_id = params
+                .get("specialistId")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string());
+            let specialist = specialist_id
+                .as_deref()
+                .and_then(SpecialistConfig::resolve);
             let role = params
                 .get("role")
                 .and_then(|v| v.as_str())
-                .map(|s| s.to_uppercase());
+                .map(|s| s.to_uppercase())
+                .or_else(|| specialist.as_ref().map(|s| s.role.as_str().to_string()));
             let model = params
                 .get("model")
                 .and_then(|v| v.as_str())
@@ -290,10 +300,18 @@ async fn acp_rpc(
                 parent_session_id
             );
 
+            let launch_options = SessionLaunchOptions {
+                specialist_id: specialist_id.clone(),
+                specialist_system_prompt: specialist
+                    .as_ref()
+                    .and_then(build_specialist_system_prompt),
+                allowed_native_tools: derive_allowed_native_tools(specialist_id.as_deref()),
+            };
+
             // Spawn agent process, initialize protocol, create agent session
             match state
                 .acp_manager
-                .create_session(
+                .create_session_with_options(
                     session_id.clone(),
                     cwd.clone(),
                     workspace_id.clone(),
@@ -303,6 +321,7 @@ async fn acp_rpc(
                     parent_session_id.clone(),
                     tool_mode.clone(),
                     mcp_profile.clone(),
+                    launch_options,
                 )
                 .await
             {
@@ -387,7 +406,7 @@ async fn acp_rpc(
 
             // Extract prompt text from content blocks
             let prompt_blocks = params.get("prompt").and_then(|v| v.as_array());
-            let prompt_text = prompt_blocks
+            let mut prompt_text = prompt_blocks
                 .map(|blocks| {
                     blocks
                         .iter()
@@ -424,6 +443,13 @@ async fn acp_rpc(
                     .get("provider")
                     .and_then(|v| v.as_str())
                     .map(|s| s.to_string());
+                let specialist_id = params
+                    .get("specialistId")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string());
+                let specialist = specialist_id
+                    .as_deref()
+                    .and_then(SpecialistConfig::resolve);
                 let workspace_id = params
                     .get("workspaceId")
                     .and_then(|v| v.as_str())
@@ -437,12 +463,24 @@ async fn acp_rpc(
                     .get("mcpProfile")
                     .and_then(|v| v.as_str())
                     .map(|s| s.to_string());
-                let role = Some("CRAFTER".to_string()); // Default role for auto-created sessions
+                let role = params
+                    .get("role")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_uppercase())
+                    .or_else(|| specialist.as_ref().map(|s| s.role.as_str().to_string()))
+                    .or(Some("CRAFTER".to_string()));
+                let launch_options = SessionLaunchOptions {
+                    specialist_id: specialist_id.clone(),
+                    specialist_system_prompt: specialist
+                        .as_ref()
+                        .and_then(build_specialist_system_prompt),
+                    allowed_native_tools: derive_allowed_native_tools(specialist_id.as_deref()),
+                };
 
                 // Create the session
                 match state
                     .acp_manager
-                    .create_session(
+                    .create_session_with_options(
                         session_id.clone(),
                         cwd.clone(),
                         workspace_id.clone(),
@@ -452,6 +490,7 @@ async fn acp_rpc(
                         None, // parent_session_id
                         tool_mode,
                         mcp_profile,
+                        launch_options,
                     )
                     .await
                 {
@@ -502,6 +541,26 @@ async fn acp_rpc(
                                 "message": format!("Failed to auto-create session: {}", e)
                             }
                         }))));
+                    }
+                }
+            }
+
+            let session_record = state.acp_manager.get_session(&session_id).await;
+            let first_prompt_sent = state
+                .acp_session_store
+                .get(&session_id)
+                .await
+                .ok()
+                .flatten()
+                .map(|row| row.first_prompt_sent)
+                .unwrap_or(false);
+
+            if let Some(session) = &session_record {
+                if !first_prompt_sent {
+                    if let Some(specialist_prompt) = &session.specialist_system_prompt {
+                        if session.provider.as_deref() != Some("claude") {
+                            prompt_text = format!("{}\n\n---\n\n{}", specialist_prompt, prompt_text);
+                        }
                     }
                 }
             }
@@ -695,6 +754,29 @@ async fn acp_rpc(
             }
         })))),
     }
+}
+
+fn build_specialist_system_prompt(specialist: &SpecialistConfig) -> Option<String> {
+    if specialist.system_prompt.trim().is_empty() {
+        return None;
+    }
+
+    if specialist.role_reminder.trim().is_empty() {
+        return Some(specialist.system_prompt.clone());
+    }
+
+    Some(format!(
+        "{}\n\n---\n**Reminder:** {}\n",
+        specialist.system_prompt, specialist.role_reminder
+    ))
+}
+
+fn derive_allowed_native_tools(specialist_id: Option<&str>) -> Option<Vec<String>> {
+    if specialist_id == Some("team-agent-lead") {
+        return Some(Vec::new());
+    }
+
+    None
 }
 
 /// GET /api/acp?sessionId=xxx — SSE stream for session/update notifications.

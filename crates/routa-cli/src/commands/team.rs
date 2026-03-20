@@ -8,6 +8,7 @@ use std::io::{self, BufRead, Write};
 use std::sync::Arc;
 
 use dialoguer::{theme::ColorfulTheme, Input};
+use routa_core::acp::SessionLaunchOptions;
 use routa_core::models::agent::AgentRole;
 use routa_core::orchestration::{OrchestratorConfig, RoutaOrchestrator, SpecialistConfig};
 use routa_core::rpc::RpcRouter;
@@ -100,7 +101,7 @@ pub async fn run(
 
     let spawn_result = state
         .acp_manager
-        .create_session(
+        .create_session_with_options(
             session_id.clone(),
             cwd.clone(),
             workspace_id.clone(),
@@ -110,6 +111,7 @@ pub async fn run(
             None,
             None, // tool_mode
             None, // mcp_profile
+            build_team_launch_options(provider, &specialist, &team_roster),
         )
         .await;
 
@@ -158,6 +160,7 @@ pub async fn run(
 
     // ── 9. Build and send team lead prompt ───────────────────────────────
     let coordinator_prompt = build_team_prompt(
+        provider,
         &specialist,
         &agent_id,
         &workspace_id,
@@ -404,12 +407,17 @@ fn format_team_roster(members: &[SpecialistConfig]) -> String {
 
 /// Build the full prompt for the team lead.
 fn build_team_prompt(
+    provider: &str,
     specialist: &SpecialistConfig,
     agent_id: &str,
     workspace_id: &str,
     user_requirement: &str,
     team_roster: &str,
 ) -> String {
+    if provider == "claude" {
+        return build_team_user_prompt(agent_id, workspace_id, user_requirement);
+    }
+
     format!(
         "{}\n\n---\n\n\
          {}\n\n\
@@ -424,6 +432,44 @@ fn build_team_prompt(
         user_requirement,
         specialist.role_reminder
     )
+}
+
+fn build_team_user_prompt(agent_id: &str, workspace_id: &str, user_requirement: &str) -> String {
+    format!(
+        "**Your Agent ID:** {}\n\
+         **Workspace ID:** {}\n\n\
+         ## User Requirement\n\n{}\n",
+        agent_id, workspace_id, user_requirement
+    )
+}
+
+fn build_team_system_prompt(specialist: &SpecialistConfig, team_roster: &str) -> String {
+    format!(
+        "{}\n\n---\n\n{}\n\n---\n**Reminder:** {}\n",
+        specialist.system_prompt, team_roster, specialist.role_reminder
+    )
+}
+
+fn build_team_launch_options(
+    provider: &str,
+    specialist: &SpecialistConfig,
+    team_roster: &str,
+) -> SessionLaunchOptions {
+    if provider != "claude" {
+        return SessionLaunchOptions::default();
+    }
+
+    let allowed_native_tools = if specialist.id == "team-agent-lead" {
+        Some(Vec::new())
+    } else {
+        None
+    };
+
+    SessionLaunchOptions {
+        specialist_id: Some(specialist.id.clone()),
+        specialist_system_prompt: Some(build_team_system_prompt(specialist, team_roster)),
+        allowed_native_tools,
+    }
 }
 
 /// Interactively prompt for the task description.
